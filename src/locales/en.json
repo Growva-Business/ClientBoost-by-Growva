@@ -1,0 +1,12 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "calendar": "Calendar",
+    "services": "Services",
+    "staff": "Staff",
+    "clients": "Clients",
+    "campaigns": "Campaigns",
+    "analytics": "Analytics",
+    "settings": "Settings"
+  }
+}

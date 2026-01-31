@@ -1,0 +1,12 @@
+{
+  "nav": {
+    "dashboard": "لوحة القيادة",
+    "calendar": "التقويم",
+    "services": "الخدمات",
+    "staff": "الموظفين",
+    "clients": "العملاء",
+    "campaigns": "الحملات",
+    "analytics": "التحليلات",
+    "settings": "الإعدادات"
+  }
+}
