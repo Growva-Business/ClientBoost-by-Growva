@@ -654,3 +654,31 @@ FOR INSERT WITH CHECK (true);
 -- 3. Allow marketing settings setup
 CREATE POLICY "Allow marketing settings setup" ON public.marketing_settings
 FOR INSERT WITH CHECK (true);
+-- 1. Create Staff table with Working Hours
+CREATE TABLE IF NOT EXISTS public.staff (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    salon_id UUID REFERENCES public.salons(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    role TEXT DEFAULT 'stylist',
+    working_hours JSONB, -- Stores the weekly schedule
+    is_active BOOLEAN DEFAULT TRUE
+);
+
+-- 2. Create Services table
+CREATE TABLE IF NOT EXISTS public.services (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    salon_id UUID REFERENCES public.salons(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    price NUMERIC(10,2) NOT NULL,
+    duration INTEGER NOT NULL, -- in minutes
+    category_id UUID
+);
+
+-- 3. Create Gift Cards table
+CREATE TABLE IF NOT EXISTS public.gift_cards (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    salon_id UUID REFERENCES public.salons(id) ON DELETE CASCADE,
+    code TEXT UNIQUE NOT NULL,
+    balance NUMERIC(10,2) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE
+);

@@ -53,7 +53,7 @@ export const useStore = create<StoreState>((set, get) => ({
   invoices: [],
 
   // --- UI ACTIONS ---
-  setLanguage: (lang) => set({ language: lang }),
+ 
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
   // --- SALON ACTIONS ---
@@ -116,7 +116,12 @@ export const useStore = create<StoreState>((set, get) => ({
     await get().fetchSalons();
     set({ loading: false });
   },
-
+setLanguage: (lang) => {
+  set({ language: lang });
+  // You must also tell the app to refresh its translation dictionary
+  localStorage.setItem('growva_lang', lang);
+  
+},
   updateSalonStatus: async (id, status) => {
     const { error } = await supabase
       .from('salons')
