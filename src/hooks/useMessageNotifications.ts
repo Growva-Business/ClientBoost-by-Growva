@@ -37,8 +37,10 @@ export function useMessageNotifications() {
     // Initial fetch
     fetchDueMessages();
 
-    return () => supabase.removeChannel(channel);
-  }, [salonProfile?.id]);
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [salonProfile?.id]);
 
   const fetchDueMessages = async () => {
     if (!salonProfile?.id) return;

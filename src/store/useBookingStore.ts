@@ -588,15 +588,17 @@ deleteCategory: async (id) => {
       // Update local state
       set(state => ({ bookings: [newBooking, ...state.bookings] }));
       
-      // Send WhatsApp confirmation if allowed
-      if (canSendMessage('confirmation')) {
-        await handleWhatsAppDispatch({ 
-          type: 'instant', 
-          phone: data.clientPhone, 
-          content: `Confirmed at ${salonProfile.name}`, 
-          salonId: salonProfile.id 
-        });
-      }
+   // PHASE-1: WhatsApp sending requires explicit user action (UI click)
+// Phase-2: auto-send may be re-enabled later
+if (canSendMessage('confirmation')) {
+  // await handleWhatsAppDispatch({ 
+  //   type: 'instant', 
+  //   phone: data.clientPhone, 
+  //   content: `Confirmed at ${salonProfile.name}`, 
+  //   salonId: salonProfile.id 
+  // });
+}
+
     }
   },
 

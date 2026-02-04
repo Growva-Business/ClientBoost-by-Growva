@@ -1,13 +1,10 @@
 // components/layout/SuperAdminLayout.tsx
 import { Outlet } from 'react-router-dom';
 
-import { ReactNode, useEffect, useRef } from 'react';
+import {  useEffect, useRef } from 'react';
 import { useStore } from '@/store/useStore';
 
-// 1. Define the Interface
-interface SuperAdminLayoutProps {
-  children: ReactNode;
-}
+
 
 // 2. Apply the Interface to the component
 export function SuperAdminLayout() {

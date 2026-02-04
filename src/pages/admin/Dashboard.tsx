@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
 import { 
-  Store, DollarSign, TrendingUp, Clock, Users, Activity, MessageSquare  
+  Store, DollarSign, TrendingUp, Clock, Users,  
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { getTranslation } from '@/localization/translations';
 import { cn } from '@/shared/utils/cn';
 import { format } from 'date-fns';
-import { Salon, AuditLog, Invoice } from '@/types';
+import { Salon, Invoice } from '@/types';
 import { useFetchDashboardData } from '@/hooks/useFetchDashboardData';  
 /**
  * 📊 THE COMMAND CENTER (Safe Version)

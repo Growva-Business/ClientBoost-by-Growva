@@ -1,6 +1,6 @@
 // components/layout/MarketingLayout.tsx
 import { Outlet } from 'react-router-dom';
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { ReactNode, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -25,9 +25,6 @@ import { cn } from '@/shared/utils/cn';
 import { Language } from '@/types';
 import { safeSetLanguage } from '@/shared/utils/language';
 
-interface MarketingLayoutProps {
-  children: ReactNode;
-}
 
 const navItems = [
   { key: 'dashboard', icon: LayoutDashboard, path: '/marketing' },

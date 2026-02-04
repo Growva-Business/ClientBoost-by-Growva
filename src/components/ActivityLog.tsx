@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Bell, ShieldAlert, CheckCircle2, Clock, Loader2 } from 'lucide-react';
 
 interface ActivityLogProps {
-  salonId?: string; 
+  salonId?: string;
 }
 
 interface AuditLog {
@@ -26,15 +26,15 @@ export const ActivityLog = ({ salonId }: ActivityLogProps) => {
   const isMounted = useRef(true);
 
   useEffect(() => {
-    isMounted.current = true;
-    
+    if (!isMounted.current) return;
+
+
     // 🔧 Fetch Logs Logic
     const fetchLogs = async () => {
       // 🛡️ Prevent fetching if already loading or same salonId
-      if (loading || lastFetchedSalonId.current === salonId) {
-        return;
-      }
-      
+      if (loading) return;
+
+
       setLoading(true);
       setError(null);
       lastFetchedSalonId.current = salonId;
@@ -43,6 +43,8 @@ export const ActivityLog = ({ salonId }: ActivityLogProps) => {
         let query = supabase
           .from('audit_logs')
           .select('*')
+          .limit(50)
+
           .order('created_at', { ascending: false });
 
         // Only apply the salon_id filter if it's provided and not 'global'
@@ -51,11 +53,11 @@ export const ActivityLog = ({ salonId }: ActivityLogProps) => {
         }
 
         const { data, error: fetchError } = await query.limit(10);
-        
+
         if (fetchError) {
           throw fetchError;
         }
-        
+
         if (isMounted.current) {
           setLogs(data || []);
         }
@@ -75,28 +77,28 @@ export const ActivityLog = ({ salonId }: ActivityLogProps) => {
 
     // 🔧 Real-time Subscription with proper cleanup
     let channel: any = null;
-    
+
     const setupSubscription = () => {
       channel = supabase
         .channel(`activity-updates-${salonId || 'global'}`)
-        .on('postgres_changes', { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'audit_logs' 
-        }, 
-        (payload) => {
-          // If we are in a specific salon view, only add if it matches
-          if (!salonId || salonId === 'global' || payload.new.salon_id === salonId) {
-            setLogs((prev) => {
-              const newLog = payload.new as AuditLog;
-              // Prevent duplicates
-              if (prev.some(log => log.id === newLog.id)) {
-                return prev;
-              }
-              return [newLog, ...prev.slice(0, 9)]; // Keep only last 10
-            });
-          }
-        })
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'audit_logs'
+        },
+          (payload) => {
+            // If we are in a specific salon view, only add if it matches
+            if (!salonId || salonId === 'global' || payload.new.salon_id === salonId) {
+              setLogs((prev) => {
+                const newLog = payload.new as AuditLog;
+                // Prevent duplicates
+                if (prev.some(log => log.id === newLog.id)) {
+                  return prev;
+                }
+                return [newLog, ...prev.slice(0, 9)]; // Keep only last 10
+              });
+            }
+          })
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
             console.log(`✅ Subscribed to audit logs for salon: ${salonId || 'global'}`);
@@ -160,13 +162,13 @@ export const ActivityLog = ({ salonId }: ActivityLogProps) => {
         </h3>
         {loading && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
       </div>
-      
+
       {error && (
         <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg">
           Error: {error}
         </div>
       )}
-      
+
       <div className="space-y-4">
         {loading && logs.length === 0 ? (
           <div className="flex justify-center py-8">
@@ -178,8 +180,8 @@ export const ActivityLog = ({ salonId }: ActivityLogProps) => {
           </p>
         ) : (
           logs.map((log) => (
-            <div 
-              key={log.id} 
+            <div
+              key={log.id}
               className="flex gap-4 items-start p-3 hover:bg-gray-50 rounded-2xl transition-all border border-transparent hover:border-gray-100"
             >
               <div className={`p-2 rounded-xl ${getIconColor(log)}`}>
@@ -200,7 +202,7 @@ export const ActivityLog = ({ salonId }: ActivityLogProps) => {
           ))
         )}
       </div>
-      
+
       {/* Optional: Add a refresh button */}
       {!loading && logs.length > 0 && (
         <div className="mt-4 pt-4 border-t border-gray-100">

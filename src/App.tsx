@@ -2,6 +2,8 @@ import React, { useState, lazy, Suspense } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { cn } from './shared/utils/cn';
+import { useMessageNotifications } from '@/hooks/useMessageNotifications';
+
 
 // Stores & Context
 import { useStore } from './store/useStore';
@@ -43,6 +45,7 @@ const MarketingSettingsPage = lazy(() => import('./pages/marketing/MarketingSett
 
 // Main App Layout Component
 function AppLayout() {
+    useMessageNotifications();
   const { language } = useStore();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');

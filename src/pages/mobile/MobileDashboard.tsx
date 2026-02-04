@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { useStore } from '../admin/Billing'; // Using your existing store
+import  { useEffect } from 'react';
+import { useStore } from '@/store/useStore'; // Using your existing store
 
 export default function MobileDashboard() {
   const { salons, fetchSalons, loading } = useStore();

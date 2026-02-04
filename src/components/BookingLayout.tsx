@@ -27,9 +27,6 @@ import { getTranslation } from '@/localization/translations';
 import { cn } from '@/shared/utils/cn';
 import { Language } from '@/types';
 
-interface BookingLayoutProps {
-  children: ReactNode;
-}
 
 const navItems = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/booking' },
