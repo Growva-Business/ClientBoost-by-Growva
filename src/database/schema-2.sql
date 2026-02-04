@@ -471,3 +471,53 @@ ON CONFLICT (salon_id) DO NOTHING;
 INSERT INTO public.daily_message_limits (salon_id, date)
 VALUES ('00000000-0000-0000-0000-000000000001', CURRENT_DATE)
 ON CONFLICT (salon_id, date) DO NOTHING;
+
+-- ============================================
+-- ESSENTIAL SCHEMA UPDATES (Run these ONLY)
+-- ============================================
+
+-- 1. Add missing columns to existing tables
+ALTER TABLE messages 
+ADD COLUMN IF NOT EXISTS scheduled_for TIMESTAMPTZ,
+ADD COLUMN IF NOT EXISTS is_auto_sent BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS salon_id UUID REFERENCES salons(id); -- In case missing
+
+ALTER TABLE message_queue
+ADD COLUMN IF NOT EXISTS attempt_count INTEGER DEFAULT 0,
+ADD COLUMN IF NOT EXISTS error_reason TEXT,
+ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 3,
+ADD COLUMN IF NOT EXISTS recipient_phone TEXT; -- If missing
+
+-- 2. Create simple daily limits table (if not exists)
+CREATE TABLE IF NOT EXISTS daily_message_limits (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  salon_id UUID NOT NULL REFERENCES salons(id),
+  date DATE NOT NULL,
+  used_promotion INTEGER DEFAULT 0,    -- Marketing messages
+  used_confirmation INTEGER DEFAULT 0, -- Booking confirmations
+  used_reminder INTEGER DEFAULT 0,     -- Reminders
+  used_custom INTEGER DEFAULT 0,       -- Staff alerts & custom
+  UNIQUE(salon_id, date)
+);
+
+-- 3. Create message_queue table (if not exists)
+CREATE TABLE IF NOT EXISTS message_queue (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  salon_id UUID NOT NULL REFERENCES salons(id),
+  recipient_phone TEXT NOT NULL,
+  content TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('confirmation', 'reminder', 'promotion', 'custom')),
+  status TEXT DEFAULT 'queued' CHECK (status IN ('queued', 'processing', 'sent', 'failed')),
+  scheduled_for TIMESTAMPTZ DEFAULT NOW(),
+  attempt_count INTEGER DEFAULT 0,
+  error_reason TEXT,
+  priority INTEGER DEFAULT 3,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+UPDATE daily_message_limits
+SET used_promotion = used_promotion + 1
+WHERE salon_id = $1 AND date = CURRENT_DATE;
+UPDATE daily_message_limits
+SET used_confirmation = used_confirmation + 1
+WHERE salon_id = $1 AND date = CURRENT_DATE;

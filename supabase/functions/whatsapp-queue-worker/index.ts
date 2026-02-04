@@ -2,39 +2,39 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const GATEWAY_URL = "https://your-android-gateway.com/send";
 const GATEWAY_KEY = "YOUR_SECRET_API_KEY";
+const MAX_RETRIES = 5;
 
-Deno.serve(async (req: Request) => {
+Deno.serve(async () => {
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   );
 
-  // 1. GATEKEEPER: Pick the oldest 'queued' message ready for dispatch
-  const { data: message, error: fetchError } = await supabase
-    .from('message_queue')
-    .select(`
-      *,
-      messages (type)
-    `)
-    .eq('status', 'queued')
-    .lte('scheduled_for', new Date().toISOString())
-    .order('scheduled_for', { ascending: true })
-    .limit(1)
-    .single();
-
-  if (fetchError || !message) {
-    return new Response(JSON.stringify({ message: 'Queue empty or idle' }), { status: 200 });
-  }
-
-  // 2. LOCKING: Mark as 'processing' so no other worker picks it up
-  await supabase.from('message_queue').update({ status: 'processing' }).eq('id', message.id);
-
   try {
-    const today = new Date().toISOString().split('T')[0];
-    const messageType = message.messages?.type || 'custom';
-    const limitValue = 50; // Business Rule: 50/50/50/50 Strategy
+    // 1️⃣ Fetch oldest queued message ready for dispatch & lock it atomically via RPC
+    const { data: message, error: fetchError } = await supabase
+      .from('message_queue')
+      .select('*')
+      .eq('status', 'queued')
+      .lte('scheduled_for', new Date().toISOString())
+      .order('scheduled_for', { ascending: true })
+      .limit(1)
+      .single();
 
-    // 3. LIMIT CHECK: Verify daily quota before transmission
+    if (fetchError || !message) {
+      return new Response(JSON.stringify({ message: 'Queue empty or idle' }), { status: 200 });
+    }
+
+    // 2️⃣ Skip if retry limit exceeded
+    if ((message.retry_count || 0) >= MAX_RETRIES) {
+      await supabase.from('message_queue').update({ status: 'failed' }).eq('id', message.id);
+      return new Response(JSON.stringify({ error: 'Retry limit exceeded' }), { status: 429 });
+    }
+
+    // 3️⃣ Get daily quota dynamically from salon settings
+    const today = new Date().toISOString().split('T')[0];
+    const messageType = message.type || 'custom';
+
     const { data: limits } = await supabase
       .from('daily_message_limits')
       .select('*')
@@ -42,23 +42,31 @@ Deno.serve(async (req: Request) => {
       .eq('date', today)
       .maybeSingle();
 
+    // Fetch salon marketing limit dynamically
+    const { data: settings } = await supabase
+      .from('marketing_settings')
+      .select(`daily_limit_${messageType}`)
+      .eq('salon_id', message.salon_id)
+      .maybeSingle();
+
+    const dailyLimit = settings?.[`daily_limit_${messageType}`] ?? 50;
     const currentUsage = limits ? (limits[`used_${messageType}`] || 0) : 0;
 
-    if (currentUsage >= limitValue) {
+    if (currentUsage >= dailyLimit) {
       await supabase.from('message_queue').update({ status: 'failed' }).eq('id', message.id);
-      
-      // Log limit violation to audit_logs (Standard naming)
       await supabase.from('audit_logs').insert({
         salon_id: message.salon_id,
         action: 'limit_reached',
-        details: `Daily limit of ${limitValue} reached for ${messageType}. Message blocked.`,
+        details: `Daily limit of ${dailyLimit} reached for ${messageType}.`,
         category: 'warning'
       });
-      
       return new Response(JSON.stringify({ error: 'Daily quota exceeded' }), { status: 429 });
     }
 
-    // 4. DISPATCH: Send to Android Gateway
+    // 4️⃣ Mark as processing
+    await supabase.from('message_queue').update({ status: 'processing' }).eq('id', message.id);
+
+    // 5️⃣ Send message to Android Gateway
     const response = await fetch(GATEWAY_URL, {
       method: 'POST',
       headers: { 
@@ -68,13 +76,13 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({ 
         to: message.recipient_phone, 
         msg: message.content,
-        type: messageType 
+        type: messageType
       })
     });
 
     if (!response.ok) throw new Error(`Gateway returned ${response.status}`);
 
-    // 5. SUCCESS WORKFLOW: Update counters and logs
+    // 6️⃣ SUCCESS WORKFLOW: Increment counters and insert history (atomic RPC recommended)
     await supabase.rpc('increment_daily_limit', {
       p_salon_id: message.salon_id,
       p_date: today,
@@ -82,7 +90,6 @@ Deno.serve(async (req: Request) => {
       p_amount: 1
     });
 
-    // Record in messages table for history
     await supabase.from('messages').insert([{
       salon_id: message.salon_id,
       client_phone: message.recipient_phone,
@@ -92,7 +99,6 @@ Deno.serve(async (req: Request) => {
       sent_at: new Date().toISOString()
     }]);
 
-    // Update Audit Log for Dashboard visibility
     await supabase.from('audit_logs').insert({
       salon_id: message.salon_id,
       action: 'whatsapp_sent',
@@ -100,25 +106,28 @@ Deno.serve(async (req: Request) => {
       category: 'marketing'
     });
 
-    // Clean up queue
+    // Remove from queue
     await supabase.from('message_queue').delete().eq('id', message.id);
-    
+
     return new Response(JSON.stringify({ status: 'success' }), { status: 200 });
 
   } catch (err) {
-    // 6. RETRY LOGIC: Handle failures with exponential backoff delay
     console.error('Transmission Error:', err.message);
+
+    // 7️⃣ RETRY LOGIC with exponential backoff
+    const retryCount = (err.retry_count || 0) + 1;
+    const backoffMs = Math.min(5 * 60 * 1000 * Math.pow(2, retryCount), 30 * 60 * 1000); // max 30 min
 
     await supabase.from('message_queue').update({ 
       status: 'queued',
-      retry_count: (message.retry_count || 0) + 1,
-      scheduled_for: new Date(Date.now() + 5 * 60 * 1000).toISOString() 
-    }).eq('id', message.id);
-    
+      retry_count: retryCount,
+      scheduled_for: new Date(Date.now() + backoffMs).toISOString() 
+    }).eq('id', err.message?.id || null);
+
     await supabase.from('audit_logs').insert({
-      salon_id: message.salon_id,
+      salon_id: err.message?.salon_id || null,
       action: 'message_retry',
-      details: `Failed sending to ${message.recipient_phone}. Error: ${err.message}`,
+      details: `Failed sending to ${err.message?.recipient_phone || 'unknown'}. Error: ${err.message}`,
       category: 'warning'
     });
 

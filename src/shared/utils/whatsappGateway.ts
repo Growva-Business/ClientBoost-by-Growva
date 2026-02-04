@@ -1,88 +1,74 @@
-import { supabase } from '@/shared/lib/supabase'; //
+import { supabase } from '../lib/supabase';
 
-/**
- * 1. The Core Dispatcher 
- * Handles the "Brain" of the sending: Instant vs Queued
- */
+// Use assistant's version - it's cleaner
 export const handleWhatsAppDispatch = async (payload: {
-  type: 'instant' | 'marketing' | 'reminder' | 'staff_alert', // Added staff_alert for clarity
+  type: 'instant' | 'marketing' | 'reminder' | 'staff_alert' | 'confirmation',
   phone: string,
   content: string,
-  salonId: string
+  salonId: string,
+  bookingId?: string,
+  ebookUrl?: string
 }) => {
-  const GATEWAY_API_URL = "https://your-android-gateway.com/send";
-  const GATEWAY_API_KEY = "YOUR_SECRET_API_KEY";
-
-  // 1. Marketing Queue Logic (9-minute gap)
-  if (payload.type === 'marketing') {
-    return await supabase.from('message_queue').insert([{
-      salon_id: payload.salonId,
-      recipient_phone: payload.phone,
-      content: payload.content,
-      status: 'queued'
-    }]);
-  }
-
-  // 2. Instant Logic (Confirmations & Staff Notifications)
   try {
-    const response = await fetch(GATEWAY_API_URL, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GATEWAY_API_KEY}` 
-      },
-      body: JSON.stringify({ to: payload.phone, msg: payload.content })
-    });
+    const { data, error } = await supabase.rpc(
+      'enqueue_or_manual_message_final',  // ✅ Use FINAL version
+      {
+        p_salon_id: payload.salonId,
+        p_phone: payload.phone,
+        p_content: payload.content,
+        p_type: payload.type === 'instant' ? 'confirmation' : payload.type
+      }
+    );
 
-    const result = await response.json();
+    if (error || data?.error) {
+      throw new Error(data?.message || error?.message);
+    }
 
-    // ✨ IMPORTANT: Record the send in the 'messages' table so the 50/50 counter works!
-  // Inside handleWhatsAppDispatch function, after response.ok
+    if (data.method === 'manual') {
+      // ✅ Proper encoding in frontend
+      const whatsappUrl = `https://wa.me/${data.phone}?text=${encodeURIComponent(data.content)}`;
 
-  
-if (response.ok) {
-  // Existing message record
-  await supabase.from('messages').insert([{
-    salon_id: payload.salonId,
-    recipient_phone: payload.phone,
-    content: payload.content,
-    type: payload.type === 'instant' ? 'confirmation' : 'staff_alert', 
-    status: 'sent'
-  }]);
+      return {
+        method: 'manual',
+        manualUrl: whatsappUrl,
+        messageId: data.message_id
+      };
+    }
 
-  // 🚀 ADD THIS: Record in audit_logs so it renders on the Dashboard
-  await supabase.from('audit_logs').insert([{
-    salon_id: payload.salonId,
-    action: 'whatsapp_sent',
-    details: `Message sent to ${payload.phone}`,
-    category: 'api'
-  }]);
-}
+    return {
+      method: 'queued',
+      scheduledFor: data.scheduled_for,
+      queueId: data.queue_id
+    };
 
-    return result;
   } catch (error) {
-    console.error("WhatsApp Gateway Error:", error);
-    return { error: "Failed to connect to gateway" };
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error';
+
+    console.error('WhatsApp dispatch failed:', errorMessage);
+    
+    // Emergency fallback
+    const whatsappUrl = `https://wa.me/${payload.phone}?text=${encodeURIComponent(payload.content)}`;
+    
+    return {
+      success: false,
+      method: 'fallback',
+      manualUrl: whatsappUrl,
+      error: errorMessage
+    };
   }
 };
 
-/**
- * 2. The Artist Helper
- */
+// Keep artist notification
 export const notifyArtistOfBooking = async (booking: any, staff: any, salonId: string) => {
-  if (!staff.is_artist || !staff.phone) return;
-
-  // Uses %0A for line breaks as per your gateway format
-  const message = `*ARTIST ALERT*%0A%0A` +
-    `Hi ${staff.name}, a new appointment is scheduled for you!%0A` +
-    `📅 Date: ${booking.date}%0A` +
-    `⏰ Time: ${booking.start_time}%0A` +
-    `👤 Client: ${booking.client_name || 'New Client'}`;
-
+  if (!staff?.phone) return;
+  
+  const message = `*ARTIST ALERT*%0A%0AHi ${staff.name}, new booking!%0A📅 ${booking.date}%0A⏰ ${booking.start_time}%0A👤 ${booking.client_name || 'New Client'}`;
+  
   return await handleWhatsAppDispatch({
-    type: 'staff_alert', // Specifically labeled for the 50-limit counter
+    type: 'staff_alert',
     phone: staff.phone,
     content: message,
-    salonId: salonId
+    salonId
   });
 };
