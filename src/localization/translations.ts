@@ -8,6 +8,7 @@ export const translations: Record<Language, Record<string, any>> = {
       superAdmin: 'Super Admin',
       searchPlaceholder: 'Search anything...',
       signOut: 'Sign Out'
+      
     },
     // 2. ADDED NEW NAV BLOCK
     nav: {
@@ -18,9 +19,30 @@ export const translations: Record<Language, Record<string, any>> = {
       nextDashboard: 'Switch Dashboard',
       signOut: 'Logout'
     },
+    en: {
+    // ...
+    currencyPos: 'left', // e.g., SAR 0
+  },
+  ar: {
+    // ...
+    currencyPos: 'right', // e.g., ٠ ر.س
+  },
+  fr: {
+    // ...
+    currencyPos: 'left',
+  },
+    // 3. ADDED BOOKING DASHBOARD TRANSLATIONS
+    dashboard: {
+      todaysTotal: "Today's Total",
+      confirmed: "Confirmed",
+      waitlist: "Waitlist",
+      services: "Services",
+      packages: "Packages",
+      giftCards: "Gift Cards",
+      loyalty: "Loyalty"
+    },
     // KEEPING EXISTING KEYS BELOW
     // Navigation (keeping these for backward compatibility)
-    dashboard: 'Dashboard',
     salons: 'Salons',
     billing: 'Billing',
     invoices: 'Invoices',
@@ -166,9 +188,18 @@ export const translations: Record<Language, Record<string, any>> = {
       nextDashboard: 'تبديل لوحة القيادة',
       signOut: 'تسجيل الخروج'
     },
+    // 3. ADDED BOOKING DASHBOARD TRANSLATIONS
+    dashboard: {
+      todaysTotal: "إجمالي اليوم",
+      confirmed: "مؤكد",
+      waitlist: "قائمة الانتظار",
+      services: "الخدمات",
+      packages: "الباقات",
+      giftCards: "بطاقات الهدايا",
+      loyalty: "الولاء"
+    },
     // KEEPING EXISTING KEYS BELOW
     // Navigation (keeping these for backward compatibility)
-    dashboard: 'لوحة التحكم',
     salons: 'الصالونات',
     billing: 'الفواتير',
     invoices: 'الفواتير',
@@ -314,9 +345,18 @@ export const translations: Record<Language, Record<string, any>> = {
       nextDashboard: 'Changer de tableau de bord',
       signOut: 'Déconnexion'
     },
+    // 3. ADDED BOOKING DASHBOARD TRANSLATIONS
+    dashboard: {
+      todaysTotal: "Total d'aujourd'hui",
+      confirmed: "Confirmé",
+      waitlist: "Liste d'attente",
+      services: "Services",
+      packages: "Forfaits",
+      giftCards: "Cartes Cadeaux",
+      loyalty: "Fidélité"
+    },
     // KEEPING EXISTING KEYS BELOW
     // Navigation (keeping these for backward compatibility)
-    dashboard: 'Tableau de bord',
     salons: 'Salons',
     billing: 'Facturation',
     invoices: 'Factures',

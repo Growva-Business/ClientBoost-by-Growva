@@ -1,32 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { 
   Plus, Trash2, Gift, Clock, DollarSign, X 
-} from 'lucide-react'; // 🧸 Error Fix: Removed Search and Edit2
+} from 'lucide-react';
 import { useBookingStore } from '@/store/useBookingStore';
-import { useStore } from '@/store/useStore';
 import { cn } from '@/shared/utils/cn';
-
-export function PackagesPage() {
-  const { currentUser } = useStore();
+import { useFetchDashboardData } from '@/hooks/useFetchDashboardData';
+export default function PackagesPage() {
+  useFetchDashboardData('booking'); // ✅ Add this
+  
   const { 
-    packages, services, salonProfile, fetchData, addPackage, deletePackage 
-  } = useBookingStore();
+    packages, services, salonProfile, addPackage, deletePackage 
+  } = useBookingStore(); // ❌ REMOVED fetchData
 
-  // 🧸 Error Fix: Removed searchQuery state to clear yellow warnings
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     original_price: 0,
-    discounted_price: 0, // 🎯 This is the correct name
+    discounted_price: 0,
     valid_days: 30,
     is_active: true,
     service_ids: [] as string[]
   });
-
-  useEffect(() => {
-    if (currentUser?.salon_id) fetchData(currentUser.salon_id);
-  }, [currentUser, fetchData]);
 
   const handleServiceToggle = (id: string) => {
     const newIds = formData.service_ids.includes(id)
@@ -37,8 +32,9 @@ export function PackagesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (currentUser?.salon_id) {
-      await addPackage({ ...formData, salon_id: currentUser.salon_id });
+    // ✅ Use salonProfile instead of currentUser
+    if (salonProfile) {
+      await addPackage({ ...formData, salon_id: salonProfile.id });
       setIsModalOpen(false);
       setFormData({ 
         name: '', 
@@ -128,7 +124,6 @@ export function PackagesPage() {
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-gray-400 uppercase">Bundle Price</label>
-                  {/* 🧸 Error Fix: Corrected 'discount_price' to 'discounted_price' */}
                   <input type="number" required className="w-full border-b py-1 outline-none focus:border-indigo-500" value={formData.discounted_price} onChange={e => setFormData({...formData, discounted_price: Number(e.target.value)})} />
                 </div>
               </div>
@@ -136,7 +131,7 @@ export function PackagesPage() {
               <div>
                 <label className="text-[10px] font-bold text-gray-400 uppercase mb-2 block">Included Services</label>
                 <div className="grid grid-cols-2 gap-2 p-2 border rounded-xl max-h-32 overflow-y-auto">
-                  {services.map(s => (
+                  {services.map((s: any) => (
                     <label key={s.id} className="flex items-center gap-2 text-xs p-1 cursor-pointer">
                       <input type="checkbox" checked={formData.service_ids.includes(s.id)} onChange={() => handleServiceToggle(s.id)} className="rounded text-indigo-600" />
                       {s.name}

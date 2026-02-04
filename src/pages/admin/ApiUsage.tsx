@@ -1,4 +1,5 @@
-import { useState } from 'react';
+// pages/admin/ApiUsage.tsx (or wherever your ApiUsage component is)
+import { useState, useMemo } from 'react'; // ❌ Remove useEffect import
 import { 
   Activity, 
   MessageSquare, 
@@ -14,34 +15,87 @@ import { useStore } from '@/store/useStore';
 import { getTranslation } from '@/localization/translations';
 import { getCountryByCode } from '@/data/countries';
 import { cn } from '@/shared/utils/cn';
+import { Salon, Country } from '@/types';
+import { useFetchDashboardData } from '@/hooks/useFetchDashboardData';
 
-export function ApiUsage() {
-  const { language, salons } = useStore();
+export default function ApiUsage() {
+  useFetchDashboardData('admin'); // ✅ Master hook handles fetching
+  
+  const { language, salons, loading } = useStore(); // ❌ Remove fetchSalons
   const t = (key: string) => getTranslation(language, key);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'usage' | 'messages' | 'name'>('usage');
+  
+  // ❌ REMOVE THIS ENTIRE useEffect BLOCK:
+  // useEffect(() => {
+  //   if (fetchSalons && (!salons || salons.length === 0)) {
+  //     fetchSalons();
+  //   }
+  // }, [fetchSalons, salons]);
 
-  // Calculate totals using snake_case properties
-  const totalApiCalls = salons.reduce((sum, s) => sum + (s.api_usage?.total_calls || 0), 0);
-  const totalApiToday = salons.reduce((sum, s) => sum + (s.api_usage?.used_today || 0), 0);
-  const totalMessages = salons.reduce((sum, s) => sum + (s.message_stats?.total_sent || 0), 0);
-  const totalMessagesToday = salons.reduce((sum, s) => sum + (s.message_stats?.today_sent || 0), 0);
-  const totalWhatsApp = salons.reduce((sum, s) => sum + (s.message_stats?.whatsapp_sent || 0), 0);
-  const totalSms = salons.reduce((sum, s) => sum + (s.message_stats?.sms_sent || 0), 0);
-  const totalEmail = salons.reduce((sum, s) => sum + (s.message_stats?.email_sent || 0), 0);
+  // ✅ Fixed with proper typing using your Salon type
+  const { 
+    totalApiCalls, 
+    totalApiToday, 
+    totalMessages, 
+    totalMessagesToday,
+    totalWhatsApp,
+    totalSms,
+    totalEmail 
+  } = useMemo(() => {
+    if (!salons || salons.length === 0) {
+      return {
+        totalApiCalls: 0,
+        totalApiToday: 0,
+        totalMessages: 0,
+        totalMessagesToday: 0,
+        totalWhatsApp: 0,
+        totalSms: 0,
+        totalEmail: 0
+      };
+    }
+    
+    return {
+      totalApiCalls: salons.reduce((sum: number, s: Salon) => 
+        sum + (s.api_usage?.total_calls || 0), 0),
+      
+      totalApiToday: salons.reduce((sum: number, s: Salon) => 
+        sum + (s.api_usage?.used_today || 0), 0),
+      
+      totalMessages: salons.reduce((sum: number, s: Salon) => 
+        sum + (s.message_stats?.total_sent || 0), 0),
+      
+      totalMessagesToday: salons.reduce((sum: number, s: Salon) => 
+        sum + (s.message_stats?.today_sent || 0), 0),
+      
+      totalWhatsApp: salons.reduce((sum: number, s: Salon) => 
+        sum + (s.message_stats?.whatsapp_sent || 0), 0),
+      
+      totalSms: salons.reduce((sum: number, s: Salon) => 
+        sum + (s.message_stats?.sms_sent || 0), 0),
+      
+      totalEmail: salons.reduce((sum: number, s: Salon) => 
+        sum + (s.message_stats?.email_sent || 0), 0)
+    };
+  }, [salons]);
 
-  const filteredSalons = salons
-    .filter((salon) => 
+  // ✅ Fixed filteredSalons with proper typing
+  const filteredSalons = useMemo(() => {
+    if (!salons) return [];
+    
+    const filtered = salons.filter((salon: Salon) => 
       salon.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       salon.email.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-    .sort((a, b) => {
-      // Sort logic updated for snake_case
+    );
+    
+    // Sort logic updated for snake_case
+    return filtered.sort((a: Salon, b: Salon) => {
       if (sortBy === 'usage') return (b.api_usage?.used_today || 0) - (a.api_usage?.used_today || 0);
       if (sortBy === 'messages') return (b.message_stats?.today_sent || 0) - (a.message_stats?.today_sent || 0);
       return a.name.localeCompare(b.name);
     });
+  }, [salons, searchQuery, sortBy]);
 
   const getUsagePercentage = (used: number, limit: number) => {
     if (!limit) return 0;
@@ -54,7 +108,7 @@ export function ApiUsage() {
     return 'bg-green-500';
   };
 
-  const stats = [
+  const stats = useMemo(() => [
     {
       title: 'Total API Calls',
       value: totalApiCalls.toLocaleString(),
@@ -100,7 +154,18 @@ export function ApiUsage() {
       bgLight: 'bg-rose-50',
       textColor: 'text-rose-600',
     },
-  ];
+  ], [totalApiCalls, totalApiToday, totalMessages, totalMessagesToday, totalWhatsApp, totalSms, totalEmail]);
+
+  if (loading && (!salons || salons.length === 0)) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="mt-2 text-gray-500">Loading API usage data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -160,8 +225,8 @@ export function ApiUsage() {
 
       {/* Salon usage cards */}
       <div className="grid gap-4 lg:grid-cols-2">
-        {filteredSalons.map((salon) => {
-          const country = getCountryByCode(salon.country_code); // Fixed: country_code
+        {filteredSalons.map((salon: Salon) => {
+          const country: Country | undefined = getCountryByCode(salon.country_code);
           const apiPercentage = getUsagePercentage(
             salon.api_usage?.used_today || 0, 
             salon.api_usage?.daily_limit || 1
@@ -263,7 +328,7 @@ export function ApiUsage() {
                   <div className="text-center">
                     <div className="flex items-center justify-center gap-1">
                       <div className="h-2 w-2 rounded-full bg-rose-500" />
-                      <span className="text-xs text-gray-500">Email</span>
+                      <span className="text-xs text-gray500">Email</span>
                     </div>
                     <p className="mt-1 font-semibold text-gray-900">
                       {(salon.message_stats?.email_sent || 0).toLocaleString()}
@@ -276,7 +341,7 @@ export function ApiUsage() {
         })}
       </div>
 
-      {filteredSalons.length === 0 && (
+      {filteredSalons.length === 0 && !loading && (
         <div className="rounded-xl border bg-white py-12 text-center">
           <Activity className="mx-auto h-12 w-12 text-gray-300" />
           <p className="mt-2 text-gray-500">{t('noData')}</p>

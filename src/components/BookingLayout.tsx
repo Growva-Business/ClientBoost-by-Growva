@@ -1,4 +1,7 @@
 import { ReactNode } from 'react';
+import { Outlet } from 'react-router-dom';
+
+
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -46,12 +49,15 @@ const languages: { code: Language; name: string; flag: string }[] = [
   { code: 'ar', name: 'العربية', flag: '🇸🇦' },
   { code: 'fr', name: 'Français', flag: '🇫🇷' },
 ];
+interface BookingLayoutProps {
+  children: React.ReactNode;
+}
 
-export function BookingLayout({ children }: BookingLayoutProps) {
+export function  BookingLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { language, setLanguage, sidebarOpen, setSidebarOpen } = useStore();
-  const { salonProfile, dailyLimits } = useBookingStore();
+  const { salonProfile, dailyLimits, loading } = useBookingStore();
   const t = (key: string) => getTranslation(language, key);
   const isRTL = language === 'ar';
 
@@ -59,6 +65,29 @@ export function BookingLayout({ children }: BookingLayoutProps) {
     location.pathname === item.path || 
     (item.path !== '/booking' && location.pathname.startsWith(item.path))
   )?.label || 'Dashboard';
+
+  // Calculate total used messages
+  const usedTotal = dailyLimits ? 
+    (dailyLimits.used_confirmation || 0) + 
+    (dailyLimits.used_reminder || 0) + 
+    (dailyLimits.used_promotion || 0) + 
+    (dailyLimits.used_custom || 0) : 0;
+  
+  // Total limit (assuming 50 per category as in your store)
+  const totalLimit = 200; // 50 * 4 categories
+
+  // Get brand color or default
+  const brandColor = salonProfile?.brand_color || '#4f46e5';
+  
+  // Show loading state
+  if (loading || !salonProfile) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen space-y-4">
+        <div className="h-16 w-16 border-8 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-xl font-black text-indigo-600 animate-pulse uppercase tracking-widest">Loading Salon...</p>
+      </div>
+    );
+  }
 
   return (
     <div className={cn("min-h-screen bg-gray-50", isRTL && "rtl")} dir={isRTL ? 'rtl' : 'ltr'}>
@@ -69,7 +98,7 @@ export function BookingLayout({ children }: BookingLayoutProps) {
           sidebarOpen ? "w-64" : "w-20",
           isRTL ? "right-0" : "left-0"
         )}
-        style={{ background: `linear-gradient(to bottom, ${salonProfile.brandColor}, ${salonProfile.brandColor}dd)` }}
+        style={{ background: `linear-gradient(to bottom, ${brandColor}, ${brandColor}dd)` }}
       >
         {/* Logo */}
         <div className="flex h-16 items-center justify-between px-4">
@@ -125,12 +154,12 @@ export function BookingLayout({ children }: BookingLayoutProps) {
             <div className="rounded-lg bg-white/10 p-3">
               <div className="flex items-center justify-between text-xs text-white/80">
                 <span>Daily Messages</span>
-                <span>{dailyLimits.usedTotal}/{dailyLimits.total}</span>
+                <span>{usedTotal}/{totalLimit}</span>
               </div>
               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/20">
                 <div 
                   className="h-full bg-white rounded-full transition-all"
-                  style={{ width: `${(dailyLimits.usedTotal / dailyLimits.total) * 100}%` }}
+                  style={{ width: `${Math.min((usedTotal / totalLimit) * 100, 100)}%` }}
                 />
               </div>
             </div>
@@ -210,7 +239,7 @@ export function BookingLayout({ children }: BookingLayoutProps) {
             <div className="flex items-center gap-2">
               <div 
                 className="h-8 w-8 rounded-full"
-                style={{ backgroundColor: salonProfile.brandColor }}
+                style={{ backgroundColor: brandColor }}
               />
               <span className="text-sm font-medium text-gray-700">{salonProfile.name}</span>
             </div>
@@ -219,9 +248,10 @@ export function BookingLayout({ children }: BookingLayoutProps) {
 
         {/* Page content */}
         <main className="p-6">
-          {children}
+         <Outlet />
         </main>
       </div>
     </div>
   );
 }
+

@@ -4,17 +4,18 @@ import {
 } from 'lucide-react';
 import { useBookingStore } from '@/store/useBookingStore';
 import { useStore } from '@/store/useStore';
+import { useFetchDashboardData } from '@/hooks/useFetchDashboardData'; // ✅ Added
 
-export function BookingSettingPage() {
+export default function BookingSettingPage() {
   const { currentUser } = useStore();
-  const { salonProfile, fetchData, updateProfile } = useBookingStore();
+  const { salonProfile, updateProfile } = useBookingStore();
+  const { loading } = useFetchDashboardData('booking'); // ✅ Added - replaces manual fetch
   
   const [formData, setFormData] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    if (currentUser?.salon_id) fetchData(currentUser.salon_id);
-  }, [currentUser, fetchData]);
+  // ✅ Data is fetched automatically by useFetchDashboardData
+  // ❌ Removed manual fetchData useEffect
 
   useEffect(() => {
     if (salonProfile) setFormData(salonProfile);
@@ -27,7 +28,8 @@ export function BookingSettingPage() {
     setIsSaving(false);
   };
 
-  if (!formData) return <div className="p-10 text-center">Loading Settings... ⚙️</div>;
+  // ✅ Uses loading from master hook instead of local state
+  if (loading || !formData) return <div className="p-10 text-center">Loading Settings... ⚙️</div>;
 
   return (
     <div className="max-w-4xl space-y-6 pb-20">

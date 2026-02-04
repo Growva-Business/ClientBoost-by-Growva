@@ -1,4 +1,6 @@
-import { ReactNode } from 'react';
+// components/layout/MarketingLayout.tsx
+import { Outlet } from 'react-router-dom';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -13,46 +15,93 @@ import {
   Globe,
   ChevronDown,
   Calendar,
-  Filter
+  Filter,
+  Loader2
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { useBookingStore } from '@/store/useBookingStore';
 import { getTranslation } from '@/localization/translations';
 import { cn } from '@/shared/utils/cn';
 import { Language } from '@/types';
+import { safeSetLanguage } from '@/shared/utils/language';
 
 interface MarketingLayoutProps {
   children: ReactNode;
 }
 
 const navItems = [
-  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/marketing' },
-  { key: 'clients', label: 'Clients', icon: Users, path: '/marketing/clients' },
-  { key: 'campaigns', label: 'Campaigns', icon: Megaphone, path: '/marketing/campaigns' },
-  { key: 'analytics', label: 'Analytics', icon: BarChart3, path: '/marketing/analytics' },
-  { key: 'staffReports', label: 'Staff Reports', icon: DollarSign, path: '/marketing/staff-reports' },
-  { key: 'filters', label: 'Saved Filters', icon: Filter, path: '/marketing/filters' },
-  { key: 'settings', label: 'Settings', icon: Settings, path: '/marketing/settings' },
+  { key: 'dashboard', icon: LayoutDashboard, path: '/marketing' },
+  { key: 'clients', icon: Users, path: '/marketing/clients' },
+  { key: 'campaigns', icon: Megaphone, path: '/marketing/campaigns' },
+  { key: 'analytics', icon: BarChart3, path: '/marketing/analytics' },
+  { key: 'staffReports', icon: DollarSign, path: '/marketing/staff-reports' },
+  { key: 'filters', icon: Filter, path: '/marketing/filters' },
+  { key: 'settings', icon: Settings, path: '/marketing/settings' },
 ];
 
 const languages: { code: Language; name: string; flag: string }[] = [
   { code: 'en', name: 'English', flag: '🇬🇧' },
   { code: 'ar', name: 'العربية', flag: '🇸🇦' },
-  { code: 'fr', name: 'Français', flag: '🇫🇷' },
+  { code: 'fr', name: 'Français', flag: '🇫🇷' }
 ];
 
-export function MarketingLayout({ children }: MarketingLayoutProps) {
+interface MarketingLayoutProps {
+  children: React.ReactNode;
+}
+
+export function MarketingLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { language, setLanguage, sidebarOpen, setSidebarOpen } = useStore();
-  const { salonProfile } = useBookingStore();
+  const { language, setLanguage, sidebarOpen, setSidebarOpen, currentUser } = useStore();
+  
+  // 🛡️ Use loading state from store
+  const { salonProfile, loading } = useBookingStore();
+  
+  // 🛡️ Better gatekeeper: Track both salon ID and fetch status
+  const lastFetchedSalonId = useRef<string | null>(null);
+  const isFetching = useRef(false);
+  
   const t = (key: string) => getTranslation(language, key);
   const isRTL = language === 'ar';
 
-  const pageTitle = navItems.find(item => 
+  // Get page title using translation
+  const activeNavItem = navItems.find(item => 
     location.pathname === item.path || 
     (item.path !== '/marketing' && location.pathname.startsWith(item.path))
-  )?.label || 'Marketing Dashboard';
+  );
+  const pageTitleKey = activeNavItem?.key || 'marketingDashboard';
+  const pageTitle = t(pageTitleKey);
+
+  // 🛡️ IMPROVED GATEKEEPER: Only fetch when salon changes, not on every render
+  useEffect(() => {
+    // Determine which salon to use
+    const salonId = currentUser?.salon_id || salonProfile?.id || '00000000-0000-0000-0000-000000000001';
+    
+    // Skip if already fetching or same salon was just fetched
+    if (isFetching.current || lastFetchedSalonId.current === salonId) {
+      return;
+    }
+    
+    // 🚫 CRITICAL: Don't fetch here! The data should already be loaded by BookingLayout
+    // Marketing pages use the SAME data as booking pages
+    // If you need fresh data, it should be triggered from the booking store, not here
+    
+    console.log("🎯 MarketingLayout: Using existing data for salon:", salonId);
+    lastFetchedSalonId.current = salonId;
+    
+  }, [currentUser?.salon_id, salonProfile?.id]); // ✅ Only watch salon IDs, not fetchData
+
+  // 🛡️ Show loading state if no salon profile
+  if (loading && !salonProfile) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 text-rose-600 animate-spin mx-auto" />
+          <p className="mt-4 text-gray-600">Loading marketing dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={cn("min-h-screen bg-gray-50", isRTL && "rtl")} dir={isRTL ? 'rtl' : 'ltr'}>
@@ -71,7 +120,7 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10">
                 <BarChart3 className="h-6 w-6 text-white" />
               </div>
-              <span className="text-lg font-bold text-white">Marketing</span>
+              <span className="text-lg font-bold text-white">{t('marketing')}</span>
             </div>
           )}
           <button
@@ -102,7 +151,7 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
                 )}
               >
                 <Icon className="h-5 w-5 shrink-0" />
-                {sidebarOpen && <span>{item.label}</span>}
+                {sidebarOpen && <span>{t(item.key)}</span>}
               </Link>
             );
           })}
@@ -117,7 +166,7 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
                 className="flex w-full items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20"
               >
                 <Calendar className="h-4 w-4" />
-                Go to Booking
+                {t('goToBooking')}
               </button>
               <button 
                 onClick={() => navigate('/')}
@@ -157,14 +206,14 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
             <div className="relative group">
               <button className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm hover:bg-gray-50">
                 <Globe className="h-4 w-4 text-gray-500" />
-                <span>{languages.find(l => l.code === language)?.flag}</span>
+                <span>{languages.find(l => l.code === language)?.flag || '🇬🇧'}</span>
                 <ChevronDown className="h-4 w-4 text-gray-400" />
               </button>
               <div className="absolute right-0 top-full mt-1 hidden w-40 rounded-lg border bg-white py-1 shadow-lg group-hover:block">
                 {languages.map((lang) => (
                   <button
                     key={lang.code}
-                    onClick={() => setLanguage(lang.code)}
+                    onClick={() => safeSetLanguage(setLanguage, lang.code)}
                     className={cn(
                       "flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50",
                       language === lang.code && "bg-rose-50 text-rose-600"
@@ -177,22 +226,31 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
               </div>
             </div>
 
-            {/* Salon info */}
-            <div className="flex items-center gap-2">
-              <div 
-                className="h-8 w-8 rounded-full"
-                style={{ backgroundColor: salonProfile.brandColor }}
-              />
-              <span className="text-sm font-medium text-gray-700">{salonProfile.name}</span>
-            </div>
+            {/* Salon info - WITH NULL CHECK */}
+            {salonProfile && (
+              <div className="flex items-center gap-2">
+                <div 
+                  className="h-8 w-8 rounded-full flex items-center justify-center text-white font-bold"
+                  style={{ 
+                    backgroundColor: salonProfile.brand_color || '#ec4899' 
+                  }}
+                >
+                  {salonProfile.name.charAt(0)}
+                </div>
+                <span className="text-sm font-medium text-gray-700">
+                  {salonProfile.name || t('salon')}
+                </span>
+              </div>
+            )}
           </div>
         </header>
 
         {/* Page content */}
         <main className="p-6">
-          {children}
+           <Outlet />
         </main>
       </div>
+      
     </div>
   );
 }

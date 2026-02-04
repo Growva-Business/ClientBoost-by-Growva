@@ -9,6 +9,7 @@ export type WhatsAppProvider = 'manual' | 'twilio' | 'meta_cloud';
 export type PaymentStatus = 'pending' | 'paid' | 'overdue';
 export type BillingStatus = 'active' | 'suspended' | 'cancelled';
 
+
 export interface Country {
   code: string;
   name: string;
@@ -120,6 +121,7 @@ export interface ServiceCategory {
   description?: string;
   order: number;
   salon_id: string;
+   created_at?: string;
 }
 
 export interface Service {
@@ -176,6 +178,7 @@ export interface Staff {
   is_active: boolean;
   created_at: string;
   is_artist: boolean;
+  role: 'stylist' | 'manager' | 'receptionist' | 'admin'; // ✅ Add this line
 }
 
 export interface SalonProfile {
@@ -194,7 +197,9 @@ export interface SalonProfile {
   business_hours: WorkingHours[];
   is_active: boolean;
   max_staff_limit: number; 
-  plan_name: string;       
+  package: 'basic' | 'advanced' | 'pro'; 
+  plan_name: string;
+  status?: 'active' | 'inactive' | 'suspended' | 'pending'; // Add this      
 }
 
 export interface FAQ {
@@ -253,6 +258,8 @@ export interface Client {
 
 export type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no_show';
 
+// src/types/index.ts
+
 export interface Booking {
   id: string;
   salon_id: string;
@@ -260,8 +267,9 @@ export interface Booking {
   staff_id?: string;
   service_id: string;
   date: string;
+  start_time: string;
   end_time: string;
-  appointment_time: string; // UTC String
+  appointment_time: string; 
   duration_minutes: number; 
   total_price: number;
   tax_amount: number;
@@ -269,20 +277,29 @@ export interface Booking {
   status: BookingStatus;
   notes?: string;
   created_at: string;
-  client?: { 
-    name: string;
-    phone: string; // ✨ Added phone here so message history can display it
-  }; 
-  service?: { name: string };
-  staff?: { name: string };
-  start_time: string;
+
+  // --- 🛠️ Fixed Objects for Dashboard & Calendar ---
+  
+  service?: { 
+    name: string; 
+    price: number;
+    category?: { name: string }; // ✨ Added category to support display in UI
+  };
+
+  staff?: { 
+    name: string; 
+    role?: string; // Links to the Staff interface role
+  };
+
   clients?: {
     name: string;
     phone: string;
   };
-  // ✨ Added these two to support WhatsApp tracking
+
+  // --- 📡 Messaging & Packages ---
+  package_id?: string; // ✨ Link to the Package interface if this is a bundle booking
   confirmation_sent?: boolean;
-  reminder_sent?: boolean;    
+  reminder_sent?: boolean;     
 }
 export type MessageType = 'confirmation' | 'reminder' | 'promotion' | 'receipt' | 'custom' | 'staff_alert';
 export type MessageStatus = 'pending' | 'sent' | 'delivered' | 'failed' | 'queued';
@@ -417,35 +434,58 @@ export interface MarketingAnalytics {
 
 // ========== 🎨 WIDGET TYPES ==========
 
+// ========== 🎨 UPDATED WIDGET TYPES ==========
+
 export interface WidgetSettings {
   salon_id: string;
   enabled: boolean;
-  primary_color: string;
+  // 🔄 CHANGED: renamed from primary_color to match salons table in schema.sql
+  brand_color: string; 
   position: 'bottom-right' | 'bottom-left';
   languages: Language[];
   default_language: Language;
   show_artist_selection: boolean;
+  
+  // ✨ ADDED: Support for the "Sarah" Assistant Persona
+  assistant_name: string;        // e.g., "Sarah"
+  assistant_avatar_url: string;  // URL to the beautiful girl face
+  ai_enabled: boolean;           // Toggle for Gemini 1.5 Flash brain
+  
   welcome_message: string;
   welcome_message_ar: string;
   welcome_message_fr: string;
 }
 
-export type WidgetStep = 'language' | 'service' | 'datetime' | 'artist' | 'details' | 'confirm' | 'success';
+// 🔄 CHANGED: Added 'chat' and 'faqs' to support the new premium tabs
+  export type WidgetStep = 
+  | 'chat' 
+  | 'faqs' 
+  | 'language' 
+  | 'service' 
+  | 'datetime' 
+  | 'artist' 
+  | 'details' 
+  | 'confirm' 
+  | 'success';
 
 export interface WidgetBookingState {
   step: WidgetStep;
   language: Language;
+  
+  // ✨ ADDED: Track if user is in AI mode or Form mode
+  is_ai_chatting: boolean;
+  
   selected_services: string[];
   selected_package?: string;
   selected_date?: string;
   selected_time?: string;
   selected_staff?: string;
+  
   client_name: string;
   client_phone: string;
   client_email: string;
   notes?: string;
 }
-
 // ========== 🛡️ DATABASE & LOGS ==========
 
 export interface WalkInClient {

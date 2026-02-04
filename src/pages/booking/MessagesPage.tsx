@@ -1,223 +1,161 @@
 import { useState } from 'react';
 import { 
-  MessageSquare, Send, Clock, CheckCircle, 
-  XCircle, AlertCircle, Filter 
+  MessageSquare, Bell, Send, ShieldCheck, 
+  Settings, Zap, Clock, AlertTriangle, Check
 } from 'lucide-react';
+import { useStore } from '@/store/useStore';
 import { useBookingStore } from '@/store/useBookingStore';
 import { cn } from '@/shared/utils/cn';
+import { useFetchDashboardData } from '@/hooks/useFetchDashboardData';
 
-export function MessagesPage() {
-  const { dailyLimits, bookings } = useBookingStore();
-  const [filterType, setFilterType] = useState<string>('all');
+// We use the rules defined in your messageRules.ts
+const MESSAGE_TYPES = [
+  { id: 'confirmation', icon: Check, color: 'text-green-600', bg: 'bg-green-50' },
+  { id: 'reminder', icon: Bell, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  { id: 'promotion', icon: Zap, color: 'text-rose-600', bg: 'bg-rose-50' },
+  { id: 'custom', icon: MessageSquare, color: 'text-purple-600', bg: 'bg-purple-50' },
+];
+
+export default function MessagesPage() {
+  // ✅ Master hook handles all data orchestration
+  useFetchDashboardData('booking');
+
+  const { language } = useStore();
+  const { salonProfile } = useBookingStore();
   
-  if (!dailyLimits) {
-    return <div className="p-10 text-center">Loading message metrics... 💬</div>;
-  }
+  const [activeTab, setActiveTab] = useState('status');
+  const isRTL = language === 'ar';
 
-  // 🧸 Using nested .client object and correct snake_case from your Booking type
-  const messageHistory = bookings.flatMap(booking => {
-    const messages = [];
-    
-    // Check if client data exists to prevent crashes
-    if (!booking.client) return [];
+  // ❌ REMOVED: All manual useEffects or fetchData calls
 
-    if (booking.confirmation_sent) { 
-      messages.push({
-        id: `${booking.id}-conf`,
-        type: 'confirmation',
-        clientName: booking.client.name, // 🧸 Fixed: booking.client.name
-        clientPhone: booking.client.phone, // 🧸 Fixed: booking.client.phone
-        content: `Your appointment is scheduled for ${booking.date} at ${booking.start_time}. Reply OK to confirm.`,
-        status: 'delivered',
-        sentAt: booking.created_at,
-      });
-    }
-    
-    if (booking.reminder_sent) { 
-      messages.push({
-        id: `${booking.id}-rem`,
-        type: 'reminder',
-        clientName: booking.client.name,
-        clientPhone: booking.client.phone,
-        content: `Reminder: Your appointment is in 4 hours at ${booking.start_time}. See you soon!`,
-        status: 'delivered',
-        sentAt: booking.date, 
-      });
-    }
-    return messages;
-  });
-
-  const filteredMessages = filterType === 'all' 
-    ? messageHistory 
-    : messageHistory.filter(m => m.type === filterType);
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'confirmation': return 'bg-green-100 text-green-700';
-      case 'reminder': return 'bg-blue-100 text-blue-700';
-      case 'promotion': return 'bg-purple-100 text-purple-700';
-      default: return 'bg-gray-100 text-gray-700';
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'delivered': return <CheckCircle className="h-4 w-4 text-green-600" />;
-      case 'sent': return <Send className="h-4 w-4 text-blue-600" />;
-      case 'pending': return <Clock className="h-4 w-4 text-amber-600" />;
-      case 'failed': return <XCircle className="h-4 w-4 text-red-600" />;
-      default: return <Clock className="h-4 w-4 text-gray-400" />;
-    }
-  };
-
-  const usagePercentage = (dailyLimits.used_total / dailyLimits.total) * 100;
+  if (!salonProfile) return (
+    <div className="p-10 text-center font-black text-gray-400 uppercase tracking-widest">
+      Loading Communications... 📡
+    </div>
+  );
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">WhatsApp Messages</h2>
-        <p className="text-gray-500">Monitor message usage and delivery status</p>
+    <div className="space-y-6 text-gray-900" dir={isRTL ? 'rtl' : 'ltr'}>
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className={cn(isRTL && "text-right")}>
+          <h2 className="text-2xl font-black text-gray-900 flex items-center gap-2">
+            <Send className="text-indigo-600" /> WhatsApp & SMS Center
+          </h2>
+          <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">
+            Automated Client Notifications & Daily Limits
+          </p>
+        </div>
+        <div className="flex bg-white border border-gray-100 p-1 rounded-xl shadow-sm">
+          <button 
+            onClick={() => setActiveTab('status')}
+            className={cn(
+              "px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+              activeTab === 'status' ? "bg-indigo-600 text-white shadow-md" : "text-gray-400 hover:text-gray-900"
+            )}
+          >
+            Today's Status
+          </button>
+          <button 
+            onClick={() => setActiveTab('settings')}
+            className={cn(
+              "px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+              activeTab === 'settings' ? "bg-indigo-600 text-white shadow-md" : "text-gray-400 hover:text-gray-900"
+            )}
+          >
+            Rules & Timing
+          </button>
+        </div>
       </div>
 
-      {/* Usage Warning */}
-      {usagePercentage >= 80 && (
-        <div className={cn(
-          "flex items-center gap-3 rounded-xl border p-4",
-          usagePercentage >= 100 ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"
-        )}>
-          <AlertCircle className={cn("h-5 w-5", usagePercentage >= 100 ? "text-red-600" : "text-amber-600")} />
-          <div>
-            <p className={cn("font-medium", usagePercentage >= 100 ? "text-red-800" : "text-amber-800")}>
-              {usagePercentage >= 100 ? 'Daily Limit Reached' : 'Approaching Daily Limit'}
-            </p>
-            <p className={cn("text-sm", usagePercentage >= 100 ? "text-red-700" : "text-amber-700")}>
-              {usagePercentage >= 100 
-                ? 'New messages will be sent via Twilio/Meta Cloud API' 
-                : `${dailyLimits.used_total} of ${dailyLimits.total} messages used today`}
-            </p>
+      {activeTab === 'status' ? (
+        <>
+          {/* Daily Limits Overview */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {MESSAGE_TYPES.map((type) => (
+              <div key={type.id} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm hover:shadow-md transition-all">
+                <div className="flex items-center justify-between mb-4">
+                  <div className={cn("rounded-xl p-2.5", type.bg)}>
+                    <type.icon size={20} className={type.color} />
+                  </div>
+                  <span className="text-[10px] font-black text-gray-400 uppercase">Limit: 50/day</span>
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">{type.id}</h4>
+                  <div className="flex items-end gap-2">
+                    <p className="text-2xl font-black text-gray-900">0</p>
+                    <p className="text-xs font-bold text-gray-300 mb-1">Sent Today</p>
+                  </div>
+                  {/* Progress Bar */}
+                  <div className="mt-3 h-1.5 w-full bg-gray-50 rounded-full overflow-hidden">
+                    <div className={cn("h-full rounded-full transition-all", type.id === 'confirmation' ? "bg-green-500" : "bg-indigo-500")} style={{ width: '0%' }} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Compliance & Security Banner */}
+          <div className="rounded-2xl bg-indigo-900 p-6 text-white shadow-xl flex items-start gap-4">
+            <div className="bg-white/10 p-3 rounded-xl">
+              <ShieldCheck className="text-indigo-300" size={24} />
+            </div>
+            <div>
+              <h4 className="font-black uppercase tracking-widest text-xs">Anti-Spam Compliance</h4>
+              <p className="mt-1 text-sm font-medium text-indigo-100 opacity-80 leading-relaxed">
+                Your messages are automatically throttled to ensure WhatsApp deliverability. Reminders are sent exactly 4 hours before the appointment to maximize attendance.
+              </p>
+            </div>
+          </div>
+        </>
+      ) : (
+        /* Settings Section */
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2 space-y-4">
+            {MESSAGE_TYPES.map((type) => (
+              <div key={type.id} className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className={cn("rounded-xl p-3", type.bg)}>
+                    <type.icon size={24} className={type.color} />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-gray-900 capitalize">{type.id} Messages</h3>
+                    <p className="text-xs font-bold text-gray-400">
+                      {type.id === 'reminder' ? 'Sent 4 hours prior' : 'Sent automatically on trigger'}
+                    </p>
+                  </div>
+                </div>
+                <label className="relative inline-flex cursor-pointer items-center">
+                  <input type="checkbox" defaultChecked className="peer sr-only" />
+                  <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-indigo-600 peer-checked:after:translate-x-full"></div>
+                </label>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-4">
+             <div className="rounded-2xl border border-dashed border-gray-200 p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Clock className="text-amber-500" size={18} />
+                  <h4 className="font-black text-[10px] uppercase tracking-widest text-gray-400">Timing Logic</h4>
+                </div>
+                <p className="text-xs font-bold text-gray-600 leading-relaxed">
+                  Automated reminders check for new bookings every 15 minutes. Messages are queued to prevent simultaneous bursts.
+                </p>
+             </div>
+
+             <div className="rounded-2xl bg-amber-50 border border-amber-100 p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <AlertTriangle className="text-amber-600" size={18} />
+                  <h4 className="font-black text-[10px] uppercase tracking-widest text-amber-600">Daily Quota</h4>
+                </div>
+                <p className="text-xs font-bold text-amber-700 leading-relaxed">
+                  Reached your limit? {salonProfile.package === 'pro' ? 'Contact support to increase your tier.' : 'Upgrade to Pro for higher message limits.'}
+                </p>
+             </div>
           </div>
         </div>
       )}
-
-      {/* Usage Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">Total Today</p>
-            <MessageSquare className="h-5 w-5 text-gray-400" />
-          </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900">
-            {dailyLimits.used_total}/{dailyLimits.total}
-          </p>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
-            <div 
-              className={cn(
-                "h-full rounded-full transition-all",
-                usagePercentage >= 90 ? "bg-red-500" : usagePercentage >= 70 ? "bg-amber-500" : "bg-green-500"
-              )}
-              style={{ width: `${Math.min(usagePercentage, 100)}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">Confirmations</p>
-            <CheckCircle className="h-5 w-5 text-green-500" />
-          </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900">
-            {dailyLimits.used_confirmation}/{dailyLimits.confirmation}
-          </p>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
-            <div 
-              className="h-full bg-green-500 rounded-full"
-              style={{ width: `${(dailyLimits.used_confirmation / dailyLimits.confirmation) * 100}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">Reminders</p>
-            <Clock className="h-5 w-5 text-blue-500" />
-          </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900">
-            {dailyLimits.used_reminder}/{dailyLimits.reminder}
-          </p>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
-            <div 
-              className="h-full bg-blue-500 rounded-full"
-              style={{ width: `${(dailyLimits.used_reminder / dailyLimits.reminder) * 100}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">Promotions</p>
-            <Send className="h-5 w-5 text-purple-500" />
-          </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900">
-            {dailyLimits.used_promotion}/{dailyLimits.promotion}
-          </p>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
-            <div 
-              className="h-full bg-purple-500 rounded-full"
-              style={{ width: `${(dailyLimits.used_promotion / dailyLimits.promotion) * 100}%` }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Message History */}
-      <div className="rounded-xl border bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b px-5 py-4">
-          <h3 className="font-semibold text-gray-900">Recent Messages</h3>
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-gray-400" />
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
-            >
-              <option value="all">All Types</option>
-              <option value="confirmation">Confirmations</option>
-              <option value="reminder">Reminders</option>
-              <option value="promotion">Promotions</option>
-            </select>
-          </div>
-        </div>
-        
-        <div className="divide-y max-h-[400px] overflow-y-auto">
-          {filteredMessages.length === 0 ? (
-            <div className="py-12 text-center">
-              <MessageSquare className="mx-auto h-12 w-12 text-gray-300" />
-              <p className="mt-2 text-gray-500">No messages yet</p>
-            </div>
-          ) : (
-            filteredMessages.map((message) => (
-              <div key={message.id} className="flex items-start gap-4 px-5 py-4">
-                <div className="mt-1">
-                  {getStatusIcon(message.status)}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", getTypeColor(message.type))}>
-                      {message.type}
-                    </span>
-                    <span className="text-sm text-gray-900 font-bold">{message.clientName}</span>
-                    <span className="text-xs text-gray-400">{message.clientPhone}</span>
-                  </div>
-                  <p className="mt-1 text-sm text-gray-600">{message.content}</p>
-                </div>
-                <div className="text-right text-xs text-gray-400">
-                  {message.sentAt ? new Date(message.sentAt).toLocaleString() : 'Pending'}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
     </div>
   );
 }

@@ -11,7 +11,8 @@ interface BookingSuccessProps {
   onClose: () => void;
 }
 
-export function BookingSuccessPage({ booking, onClose }: BookingSuccessProps) {
+export default function BookingSuccessPage({ booking, onClose }: BookingSuccessProps) {
+  // ✅ Removed useFetchDashboardData - this page doesn't need to fetch salon data
   const { crmEbooks, services, categories, salonProfile } = useBookingStore();
 
   // 1. Identify the service and category booked
@@ -66,7 +67,7 @@ export function BookingSuccessPage({ booking, onClose }: BookingSuccessProps) {
             </p>
             
             <a 
-              href={waLink} // 🧸 This now uses the 'finalMessage' via waLink!
+              href={waLink}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-center gap-3 w-full py-4 bg-[#25D366] text-white rounded-2xl font-black shadow-lg hover:scale-[1.02] transition-all active:scale-95"

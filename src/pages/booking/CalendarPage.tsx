@@ -1,145 +1,160 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { 
-  Plus, X, Clock // 🧸 Kept only Clock for the "Empty" state
-} from 'lucide-react'; 
+  Calendar as CalendarIcon, Clock, ChevronLeft, 
+  ChevronRight, Plus, Search, Users 
+} from 'lucide-react';
 import { useBookingStore } from '@/store/useBookingStore';
 import { useStore } from '@/store/useStore';
 import { cn } from '@/shared/utils/cn';
-import { fromUTC } from '@/shared/utils/date-logic';
-import { format, addDays, startOfWeek, isSameDay } from 'date-fns';
-import { BookingStatus } from '@/types';
+import { format, startOfToday, addDays, isSameDay } from 'date-fns';
+import { useFetchDashboardData } from '@/hooks/useFetchDashboardData';
 
-export function CalendarPage() {
-  const { currentUser } = useStore();
-  const { 
-    salonProfile, bookings, services, fetchData, addBooking 
-  } = useBookingStore();
+export default function CalendarPage() {
+  // ✅ Master hook handles all data orchestration for the calendar
+  useFetchDashboardData('booking');
 
-  const [currentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  const [formData, setFormData] = useState({
-    clientName: '', clientPhone: '', serviceId: '', time: '09:00'
-  });
+  const { language } = useStore();
+  const { salonProfile, bookings, staff } = useBookingStore();
   
-  useEffect(() => {
-    if (currentUser?.salon_id) fetchData(currentUser.salon_id);
-  }, [currentUser, fetchData]);
+  const [selectedDate, setSelectedDate] = useState(startOfToday());
+  const [searchQuery, setSearchQuery] = useState('');
+  const isRTL = language === 'ar';
 
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(currentDate), i));
-  
-  // 🧸 Error Fix 7: Using 'todayBookings' in the JSX below
-  const todayBookings = bookings.filter(b => {
-    if (!salonProfile) return false;
-    return fromUTC(b.appointment_time, salonProfile.timezone).toFormat('yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
-  });
+  // ✅ FIX: Changed 'b.services' to 'b.service' to match your Booking type
+  const filteredBookings = bookings.filter(b => 
+    isSameDay(new Date(b.appointment_time), selectedDate) &&
+    (b.clients?.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+     b.service?.name?.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
 
-  const handleCreateBooking = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const service = services.find(s => s.id === formData.serviceId);
-    
-    await addBooking({
-      ...formData,
-      date: format(selectedDate, 'yyyy-MM-dd'),
-      // 🧸 Error Fix 1: Changing back to 'duration' to match your Service type
-      duration: (service as any)?.duration || 30, 
-      totalPrice: service?.price || 0,
-      finalPrice: service?.price || 0,
-    });
-    setIsModalOpen(false);
-  };
-
-  const getStatusColor = (status: BookingStatus) => {
-    switch (status) {
-      case 'confirmed': return 'bg-green-100 border-green-300 text-green-800';
-      case 'pending': return 'bg-amber-100 border-amber-300 text-amber-800';
-      case 'completed': return 'bg-blue-100 border-blue-300 text-blue-800';
-      default: return 'bg-gray-100 border-gray-300 text-gray-800';
-    }
-  };
-
-  if (!salonProfile) return <div className="p-10 text-center">Loading...</div>;
+  if (!salonProfile) return (
+    <div className="p-10 text-center font-black text-gray-400 uppercase tracking-widest">
+      Syncing Calendar... 📅
+    </div>
+  );
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Calendar</h2>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="px-4 py-2 rounded-lg text-white font-bold" 
-          style={{ backgroundColor: salonProfile.brand_color }}
-        >
-          <Plus size={18} className="inline mr-2"/> New Appointment
-        </button>
-      </div>
-
-      <div className="grid grid-cols-7 gap-2">
-        {weekDays.map((day) => (
-          <button 
-            key={day.toISOString()} 
-            onClick={() => setSelectedDate(day)} 
-            className={cn("rounded-xl border p-4 bg-white", isSameDay(day, selectedDate) && "ring-2")} 
-            // 🧸 Error Fix 2: Changed 'ringColor' to 'boxShadow'
-            style={isSameDay(day, selectedDate) ? { boxShadow: `0 0 0 2px ${salonProfile.brand_color}` } : {}}
-          >
-            <p className="text-xs text-gray-400 font-bold uppercase">{format(day, 'EEE')}</p>
-            <p className="text-xl font-black">{format(day, 'd')}</p>
-          </button>
-        ))}
-      </div>
-
-      <div className="rounded-2xl border bg-white shadow-sm overflow-hidden">
-        <div className="bg-gray-50 px-6 py-4 border-b">
-          <h3 className="font-bold text-gray-900">{format(selectedDate, 'EEEE, MMMM do')}</h3>
+    <div className="space-y-6 text-gray-900" dir={isRTL ? 'rtl' : 'ltr'}>
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className={cn(isRTL && "text-right")}>
+          <h2 className="text-2xl font-black text-gray-900 flex items-center gap-2">
+            <CalendarIcon className="text-indigo-600" /> Appointment Schedule
+          </h2>
+          <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">
+            {format(selectedDate, 'EEEE, MMMM do yyyy')}
+          </p>
         </div>
-        <div className="divide-y max-h-[600px] overflow-y-auto">
-          {/* 🧸 'todayBookings' is now being read here */}
-          {todayBookings.length === 0 ? (
-            <div className="py-20 text-center">
-              <Clock className="mx-auto h-12 w-12 text-gray-200 mb-2" />
-              <p className="text-gray-400">No appointments scheduled.</p>
+        <div className="flex gap-2">
+           <button className="p-3 rounded-xl border border-gray-100 bg-white hover:bg-gray-50 transition-all">
+              <Search size={18} className="text-gray-400" />
+           </button>
+           <button 
+            className="inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-black text-white shadow-lg transition-all active:scale-95" 
+            style={{ backgroundColor: salonProfile.brand_color }}
+          >
+            <Plus size={18} /> New Booking
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-4">
+        {/* Date Selection Sidebar */}
+        <div className="lg:col-span-1 space-y-6">
+          <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+               <h3 className="font-black text-[10px] uppercase tracking-widest text-gray-400">Jump to Date</h3>
+               <div className="flex gap-1">
+                  <button onClick={() => setSelectedDate(addDays(selectedDate, -1))} className="p-1 hover:bg-gray-100 rounded-lg"><ChevronLeft size={16}/></button>
+                  <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} className="p-1 hover:bg-gray-100 rounded-lg"><ChevronRight size={16}/></button>
+               </div>
             </div>
-          ) : (
-            todayBookings.map((booking) => {
-              const localTime = fromUTC(booking.appointment_time, salonProfile.timezone).toFormat('hh:mm a');
-              return (
-                <div key={booking.id} className="flex items-center justify-between px-6 py-5">
-                  <div className="flex items-center gap-6">
-                    <p className="text-lg font-black text-gray-900">{localTime}</p>
-                    <div className="h-10 w-1 rounded-full" style={{ backgroundColor: salonProfile.brand_color }} />
-                    <p className="font-bold text-gray-900">{booking.clients?.name || 'Walk-in'}</p>
+            <div className="space-y-2">
+              {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
+                const date = addDays(startOfToday(), offset);
+                const isSelected = isSameDay(date, selectedDate);
+                return (
+                  <button
+                    key={offset}
+                    onClick={() => setSelectedDate(date)}
+                    className={cn(
+                      "w-full flex items-center justify-between p-4 rounded-2xl transition-all font-black text-sm",
+                      isSelected 
+                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" 
+                        : "bg-gray-50 text-gray-400 hover:bg-white hover:shadow-md"
+                    )}
+                  >
+                    <span>{format(date, 'EEE, MMM d')}</span>
+                    {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-gray-900 rounded-3xl p-6 text-white shadow-xl">
+             <div className="flex items-center gap-2 mb-4">
+                <Users size={18} className="text-indigo-400" />
+                <h4 className="font-black text-[10px] uppercase tracking-widest opacity-60">Staff on Duty</h4>
+             </div>
+             <div className="space-y-3">
+                {staff.slice(0, 3).map(s => (
+                  <div key={s.id} className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center font-black text-[10px]">{s.name[0]}</div>
+                    <span className="text-xs font-bold">{s.name}</span>
                   </div>
-                  <span className={cn("rounded-full px-3 py-1 text-[10px] font-bold uppercase border", getStatusColor(booking.status))}>
-                    {booking.status}
-                  </span>
+                ))}
+             </div>
+          </div>
+        </div>
+
+        {/* Appointment Feed */}
+        <div className="lg:col-span-3 space-y-4">
+          {filteredBookings.length > 0 ? (
+            filteredBookings.map((booking) => (
+              <div key={booking.id} className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all group flex items-center justify-between">
+                <div className="flex items-center gap-6">
+                  <div className="flex flex-col items-center justify-center h-16 w-16 rounded-2xl bg-gray-50 text-indigo-600 border border-gray-100 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                    <Clock size={20} />
+                    <span className="text-xs font-black mt-1">
+                      {format(new Date(booking.appointment_time), 'HH:mm')}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="font-black text-lg text-gray-900">{booking.clients?.name || 'Guest'}</h3>
+                    <div className="flex items-center gap-3 mt-1">
+                      {/* ✅ FIX: Changed 'booking.services' to 'booking.service' */}
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{booking.service?.name}</span>
+                      <div className="h-1 w-1 rounded-full bg-gray-200" />
+                      <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">{booking.staff?.name}</span>
+                    </div>
+                  </div>
                 </div>
-              );
-            })
+
+                <div className="flex items-center gap-4">
+                  <div className={cn(isRTL ? "text-left" : "text-right")}>
+                    <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Total Price</p>
+                    {/* ✅ FIX: Changed 'booking.services' to 'booking.service' */}
+                    <p className="font-black text-gray-900">{salonProfile.currency} {booking.service?.price || 0}</p>
+                  </div>
+                  <div className={cn(
+                    "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter shadow-sm",
+                    booking.status === 'confirmed' ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"
+                  )}>
+                    {booking.status}
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="py-32 text-center border-4 border-dashed border-gray-50 rounded-[3rem] bg-white/50">
+               <CalendarIcon size={48} className="mx-auto text-gray-100 mb-4" />
+               <h3 className="text-lg font-black text-gray-900">No Appointments</h3>
+               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Quiet day! Use the time to run a campaign.</p>
+            </div>
           )}
         </div>
       </div>
-
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-xl">New Appointment</h3>
-              <button onClick={() => setIsModalOpen(false)}><X/></button>
-            </div>
-            <form onSubmit={handleCreateBooking} className="space-y-4">
-              <input required className="w-full border-b py-2 outline-none" placeholder="Client Name" value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} />
-              <input required className="w-full border-b py-2 outline-none" placeholder="Phone" value={formData.clientPhone} onChange={e => setFormData({...formData, clientPhone: e.target.value})} />
-              <select required className="w-full border-b py-2 outline-none bg-transparent" value={formData.serviceId} onChange={e => setFormData({...formData, serviceId: e.target.value})}>
-                <option value="">Select Service</option>
-                {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-              <button type="submit" className="w-full py-4 rounded-xl text-white font-bold" style={{ backgroundColor: salonProfile.brand_color }}>Book Now</button>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
-

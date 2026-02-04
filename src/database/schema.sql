@@ -682,3 +682,27 @@ CREATE TABLE IF NOT EXISTS public.gift_cards (
     balance NUMERIC(10,2) NOT NULL,
     is_active BOOLEAN DEFAULT TRUE
 );
+
+-- If you don't have a status column in your salons table, add it:
+ALTER TABLE salons ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
+
+-- Update existing rows to have a default status
+UPDATE salons SET status = 'active' WHERE status IS NULL;
+
+ALTER FUNCTION public.increment_daily_limit SET search_path = public;
+ALTER FUNCTION public.reset_daily_limits SET search_path = public;
+ALTER FUNCTION public.update_updated_at SET search_path = public;
+
+-- Check if salon_id is indexed in bookings table
+SELECT 
+  tablename,
+  indexname,
+  indexdef
+FROM pg_indexes
+WHERE tablename = 'bookings'
+  AND indexdef LIKE '%salon_id%';
+
+-- If not, create indexes:
+CREATE INDEX IF NOT EXISTS idx_bookings_salon_id ON bookings(salon_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_appointment_time ON bookings(appointment_time);
+CREATE INDEX IF NOT EXISTS idx_bookings_client_id ON bookings(client_id);

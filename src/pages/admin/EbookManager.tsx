@@ -1,9 +1,13 @@
-import { useState, useEffect } from 'react';
-import { Book, Plus, Trash2, Globe, Tag,  } from 'lucide-react';
-// import AlertCircle from 'lucide-react/AlertCircle';
+import { useState, useEffect, useRef } from 'react'; // ✅ Added useRef
+import { Book, Plus, Trash2, Globe, Tag } from 'lucide-react';
 import { useBookingStore } from '@/store/useBookingStore';
+import { cn } from '@/shared/utils/cn'; // For consistent styling
+import { useFetchDashboardData } from '@/hooks/useFetchDashboardData';                                                                             
 
-export function EbookManager() {
+
+export default function EbookManager() {
+    useFetchDashboardData('admin'); // ✅ Add this
+
   const { crmEbooks, fetchCrmEbooks, addCrmEbook, deleteCrmEbook } = useBookingStore();
   const [isAdding, setIsAdding] = useState(false);
   const [formData, setFormData] = useState({
@@ -13,15 +17,43 @@ export function EbookManager() {
     language: 'en'
   });
 
+  // ✅ Safety lock to prevent multiple fetches
+  const hasFetched = useRef(false);
+  const lastFetchTime = useRef(0);
+
   useEffect(() => {
-    fetchCrmEbooks();
-  }, [fetchCrmEbooks]);
+    // 🛡️ Throttle: Only fetch once every 10 seconds max
+    const now = Date.now();
+    if (now - lastFetchTime.current < 10000) {
+      console.log("⏸️ Ebook fetch throttled");
+      return;
+    }
+
+    // 🛡️ Only fetch if we haven't already fetched or if data is empty
+    if (!hasFetched.current || !crmEbooks || crmEbooks.length === 0) {
+      console.log("📚 Fetching ebooks...");
+      fetchCrmEbooks();
+      hasFetched.current = true;
+      lastFetchTime.current = now;
+    }
+  }, [fetchCrmEbooks, crmEbooks]); // ✅ Include crmEbooks as dependency
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await addCrmEbook(formData);
     setFormData({ title: '', category_type: 'hair', file_url: '', language: 'en' });
     setIsAdding(false);
+  };
+
+  // ✅ Helper function to get category display name
+  const getCategoryDisplay = (category: string) => {
+    const categories: Record<string, string> = {
+      'hair': 'Hair Care',
+      'skin': 'Skin Care',
+      'nails': 'Nail Care',
+      'other': 'Other'
+    };
+    return categories[category] || category;
   };
 
   return (
@@ -76,38 +108,55 @@ export function EbookManager() {
             />
           </div>
           <div className="space-y-2 flex items-end">
-            <button className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-indigo-100 shadow-xl hover:bg-indigo-700 transition-all">
+            <button type="submit" className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-indigo-100 shadow-xl hover:bg-indigo-700 transition-all">
               Save to Library
             </button>
           </div>
         </form>
       )}
 
+      {/* ✅ Ebooks Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {crmEbooks.map(book => (
-          <div key={book.id} className="bg-white p-6 rounded-[2.5rem] border-2 border-gray-50 shadow-sm group hover:shadow-md transition-all">
-            <div className="flex justify-between items-start mb-6">
-              <div className="bg-indigo-50 p-4 rounded-2xl text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                <Book size={28} />
+        {crmEbooks && crmEbooks.length > 0 ? (
+          crmEbooks.map(book => (
+            <div key={book.id} className="bg-white p-6 rounded-[2.5rem] border-2 border-gray-50 shadow-sm group hover:shadow-md transition-all">
+              <div className="flex justify-between items-start mb-6">
+                <div className={cn(
+                  "p-4 rounded-2xl transition-colors",
+                  book.category_type === 'hair' ? "bg-indigo-50 text-indigo-600" :
+                  book.category_type === 'skin' ? "bg-pink-50 text-pink-600" :
+                  book.category_type === 'nails' ? "bg-purple-50 text-purple-600" :
+                  "bg-gray-50 text-gray-600"
+                )}>
+                  <Book size={28} />
+                </div>
+                <button 
+                  onClick={() => { 
+                    if(confirm(`Are you sure you want to delete "${book.title}"?`)) 
+                      deleteCrmEbook(book.id);
+                  }}
+                  className="text-gray-300 hover:text-red-500 transition-colors p-2"
+                >
+                  <Trash2 size={20} />
+                </button>
               </div>
-              <button 
-                onClick={() => { if(confirm('Delete book?')) deleteCrmEbook(book.id) }}
-                className="text-gray-300 hover:text-red-500 transition-colors p-2"
-              >
-                <Trash2 size={20} />
-              </button>
+              <h4 className="font-black text-xl text-gray-900 mb-6 leading-tight">{book.title}</h4>
+              <div className="flex flex-wrap gap-2">
+                <span className="flex items-center gap-1.5 bg-gray-50 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase text-gray-500 border border-gray-100">
+                  <Tag size={12}/> {getCategoryDisplay(book.category_type)}
+                </span>
+                <span className="flex items-center gap-1.5 bg-gray-50 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase text-gray-500 border border-gray-100">
+                  <Globe size={12}/> {book.language?.toUpperCase() || 'EN'}
+                </span>
+              </div>
             </div>
-            <h4 className="font-black text-xl text-gray-900 mb-6 leading-tight">{book.title}</h4>
-            <div className="flex flex-wrap gap-2">
-              <span className="flex items-center gap-1.5 bg-gray-50 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase text-gray-500 border border-gray-100">
-                <Tag size={12}/> {book.category_type}
-              </span>
-              <span className="flex items-center gap-1.5 bg-gray-50 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase text-gray-500 border border-gray-100">
-                <Globe size={12}/> {book.language}
-              </span>
-            </div>
+          ))
+        ) : (
+          <div className="col-span-3 text-center py-12">
+            <Book className="mx-auto h-16 w-16 text-gray-300" />
+            <p className="mt-4 text-gray-500 font-medium">No e-books yet. Add your first one!</p>
           </div>
-        ))}
+        )}
       </div>
     </div>
   );

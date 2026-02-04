@@ -13,8 +13,10 @@ import { useStore } from '@/store/useStore';
 import { getTranslation } from '@/localization/translations';
 import { cn } from '@/shared/utils/cn';
 import { Language } from '@/types';
+import { useFetchDashboardData } from '@/hooks/useFetchDashboardData';                                                                             
+export default function Settings() {
+    useFetchDashboardData('admin'); // ✅ Add this
 
-export function Settings() {
   const { language, setLanguage } = useStore();
   const t = (key: string) => getTranslation(language, key);
 

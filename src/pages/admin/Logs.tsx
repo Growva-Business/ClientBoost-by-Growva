@@ -1,22 +1,43 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react'; // ✅ Added useRef
 import { 
   ClipboardList, Search, User, Store, DollarSign, Settings, Activity 
-} from 'lucide-react'; // 🧸 I removed 'Shield' from here!
+} from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { getTranslation } from '@/localization/translations';
 import { cn } from '@/shared/utils/cn';
 import { format } from 'date-fns';
+import { useFetchDashboardData } from '@/hooks/useFetchDashboardData';
+export default function Logs() {
+    useFetchDashboardData('admin'); // ✅ Add this
 
-export function Logs() {
-  const { language, auditLogs, fetchAuditLogs } = useStore();
+  const { language, auditLogs, fetchAuditLogs, loading } = useStore(); // ✅ Added loading
   const t = (key: string) => getTranslation(language, key);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [dateFilter] = useState<string>('all'); // 🧸 Removed 'setDateFilter' because we aren't using it yet
+  const [dateFilter] = useState<string>('all');
+
+  // ✅ Safety lock to prevent multiple fetches
+  const lastFetchTime = useRef<number>(0);
+  const isFetching = useRef<boolean>(false);
 
   useEffect(() => {
-    fetchAuditLogs();
+    // ✅ Prevent fetching if already loading or recently fetched
+    const now = Date.now();
+    const timeSinceLastFetch = now - lastFetchTime.current;
+    
+    if (isFetching.current || timeSinceLastFetch < 5000) { // 5 second cooldown
+      console.log("⏸️ Logs: Throttling fetch, last fetch was", Math.floor(timeSinceLastFetch / 1000), "seconds ago");
+      return;
+    }
+
+    console.log("📡 Logs: Fetching audit logs...");
+    isFetching.current = true;
+    lastFetchTime.current = now;
+    
+    fetchAuditLogs().finally(() => {
+      isFetching.current = false;
+    });
   }, [fetchAuditLogs]);
 
   const now = new Date();
@@ -25,10 +46,9 @@ export function Logs() {
   const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
 
   const filteredLogs = auditLogs.filter((log) => {
-    // 🧸 Using the new names from our fixed dictionary!
-  const matchesSearch = 
-  log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
-  (log.details?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
+    const matchesSearch = 
+      log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (log.details?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
     
     const matchesCategory = categoryFilter === 'all' || log.category === categoryFilter;
     
@@ -66,6 +86,18 @@ export function Logs() {
       default: return 'bg-gray-100 text-gray-600';
     }
   };
+
+  // ✅ Show loading state
+  if (loading && auditLogs.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="mt-2 text-gray-500">Loading audit logs...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -110,9 +142,9 @@ export function Logs() {
               <div className="min-w-0 flex-1">
                 <p className="font-bold text-gray-900 uppercase text-xs">{log.action.replace('_', ' ')}</p>
                 <p className="mt-1 text-sm text-gray-600">{log.details}</p>
-              <p className="mt-1 text-[10px] text-indigo-500 font-black uppercase tracking-widest">
-              {log.category}
-  </p>
+                <p className="mt-1 text-[10px] text-indigo-500 font-black uppercase tracking-widest">
+                  {log.category}
+                </p>
               </div>
               <div className="text-right text-xs text-gray-400">
                 <p className="font-medium text-gray-600">{format(new Date(log.created_at), 'MMM d, yyyy')}</p>
@@ -121,7 +153,13 @@ export function Logs() {
           );
         })}
       </div>
+
+      {filteredLogs.length === 0 && !loading && (
+        <div className="rounded-xl border bg-white py-12 text-center">
+          <ClipboardList className="mx-auto h-12 w-12 text-gray-300" />
+          <p className="mt-2 text-gray-500">No audit logs found</p>
+        </div>
+      )}
     </div>
   );
 }
-

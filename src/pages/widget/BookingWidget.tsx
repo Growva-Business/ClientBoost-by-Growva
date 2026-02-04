@@ -1,719 +1,195 @@
-import { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  MessageCircle, 
-  X, 
-  ChevronLeft,
-  ChevronRight,
-  Calendar,
-  Clock,
-  User,
-  Phone,
-  Mail,
-  Check,
-  Scissors,
-  Package
+  X, Send, Sparkles, Calendar, Scissors, Package, 
+  HelpCircle, Clock, MapPin, Phone, User, ChevronRight 
 } from 'lucide-react';
 import { useBookingStore } from '@/store/useBookingStore';
+import { useStore } from '@/store/useStore';
 import { cn } from '@/shared/utils/cn';
-import { format, addDays, startOfWeek, isSameDay } from 'date-fns';
-import { Language, WidgetStep } from '@/types';
-import { countries } from '@/data/countries';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const translations = {
-  en: {
-    bookAppointment: 'Book Appointment',
-    selectLanguage: 'Select Language',
-    selectService: 'Select Service or Package',
-    services: 'Services',
-    packages: 'Packages',
-    selectDateTime: 'Select Date & Time',
-    selectArtist: 'Select Artist (Optional)',
-    anyAvailable: 'Any Available',
-    yourDetails: 'Your Details',
-    name: 'Name',
-    phone: 'Phone',
-    email: 'Email (optional)',
-    notes: 'Notes (optional)',
-    confirmBooking: 'Confirm Booking',
-    bookingConfirmed: 'Booking Confirmed!',
-    confirmationSent: 'Confirmation message sent to your WhatsApp',
-    back: 'Back',
-    next: 'Next',
-    confirm: 'Confirm',
-    close: 'Close',
-    minutes: 'min',
-  },
-  ar: {
-    bookAppointment: 'احجز موعد',
-    selectLanguage: 'اختر اللغة',
-    selectService: 'اختر الخدمة أو الباقة',
-    services: 'الخدمات',
-    packages: 'الباقات',
-    selectDateTime: 'اختر التاريخ والوقت',
-    selectArtist: 'اختر الفنان (اختياري)',
-    anyAvailable: 'أي متاح',
-    yourDetails: 'بياناتك',
-    name: 'الاسم',
-    phone: 'الهاتف',
-    email: 'البريد (اختياري)',
-    notes: 'ملاحظات (اختياري)',
-    confirmBooking: 'تأكيد الحجز',
-    bookingConfirmed: 'تم تأكيد الحجز!',
-    confirmationSent: 'تم إرسال رسالة التأكيد إلى واتساب',
-    back: 'رجوع',
-    next: 'التالي',
-    confirm: 'تأكيد',
-    close: 'إغلاق',
-    minutes: 'دقيقة',
-  },
-  fr: {
-    bookAppointment: 'Réserver un rendez-vous',
-    selectLanguage: 'Choisir la langue',
-    selectService: 'Choisir un service ou forfait',
-    services: 'Services',
-    packages: 'Forfaits',
-    selectDateTime: 'Choisir la date et l\'heure',
-    selectArtist: 'Choisir un artiste (Optionnel)',
-    anyAvailable: 'N\'importe qui disponible',
-    yourDetails: 'Vos coordonnées',
-    name: 'Nom',
-    phone: 'Téléphone',
-    email: 'Email (optionnel)',
-    notes: 'Notes (optionnel)',
-    confirmBooking: 'Confirmer la réservation',
-    bookingConfirmed: 'Réservation confirmée!',
-    confirmationSent: 'Message de confirmation envoyé sur WhatsApp',
-    back: 'Retour',
-    next: 'Suivant',
-    confirm: 'Confirmer',
-    close: 'Fermer',
-    minutes: 'min',
-  },
-};
+// 🛡️ Initialize Gemini 1.5 Flash
+const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 
-export function BookingWidget() {
-  const { salonProfile, services, packages, staff, categories, addBooking } = useBookingStore();
+export function PremiumSmartWidget() {
+  const { 
+    salonProfile, services, packages, staff, faqs, bookings, loading 
+  } = useBookingStore();
+  const { language } = useStore();
   
   const [isOpen, setIsOpen] = useState(false);
-  const [step, setStep] = useState<WidgetStep>('language');
-  const [language, setLanguage] = useState<Language>('en');
-  const [selectedServices, setSelectedServices] = useState<string[]>([]);
-  const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
-  const [clientName, setClientName] = useState('');
-  const [clientPhone, setClientPhone] = useState('');
-  const [clientEmail, setClientEmail] = useState('');
-  const [notes, setNotes] = useState('');
-  const [currentWeek, setCurrentWeek] = useState(new Date());
-  const [viewMode, setViewMode] = useState<'services' | 'packages'>('services');
+  const [activeView, setActiveView] = useState<'chat' | 'booking' | 'faqs'>('chat');
+  const [chat, setChat] = useState<{role: 'user' | 'bot', text: string}[]>([]);
+  const [input, setInput] = useState('');
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const t = translations[language];
-  const isRTL = language === 'ar';
+  // 🎨 Branding
+  const brandColor = salonProfile?.brand_color || '#6366f1';
+  const assistantName = "Sarah"; // Your Salon's Virtual Stylist
 
-  const weekStart = startOfWeek(currentWeek, { weekStartsOn: 0 });
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-
-  // Generate time slots
-  const timeSlots = [];
-  for (let hour = 9; hour < 21; hour++) {
-    timeSlots.push(`${String(hour).padStart(2, '0')}:00`);
-    timeSlots.push(`${String(hour).padStart(2, '0')}:30`);
-  }
-
-  const activeServices = services.filter(s => s.isActive);
-  const activePackages = packages.filter(p => p.isActive);
-  const activeStaff = staff.filter(s => s.isActive);
-
-  const getSelectedItems = () => {
-    if (selectedPackage) {
-      const pkg = packages.find(p => p.id === selectedPackage);
-      return pkg ? [{ 
-        id: pkg.id, 
-        name: pkg.name, 
-        price: pkg.discountedPrice, 
-        duration: pkg.services.reduce((sum, sId) => {
-          const srv = services.find(s => s.id === sId);
-          return sum + (srv?.duration || 0);
-        }, 0)
-      }] : [];
+  useEffect(() => {
+    if (salonProfile && chat.length === 0) {
+      setChat([{ 
+        role: 'bot', 
+        text: `Hi Gorgeous! ✨ I'm ${assistantName}, your personal assistant at ${salonProfile.name}. How can I make your day more beautiful?` 
+      }]);
     }
-    return selectedServices.map(id => {
-      const srv = services.find(s => s.id === id);
-      return srv ? { id: srv.id, name: srv.name, price: srv.price, duration: srv.duration } : null;
-    }).filter(Boolean) as { id: string; name: string; price: number; duration: number }[];
-  };
+  }, [salonProfile]);
 
-  const totalPrice = getSelectedItems().reduce((sum, item) => sum + item.price, 0);
-  const totalDuration = getSelectedItems().reduce((sum, item) => sum + item.duration, 0);
-  const taxAmount = salonProfile.taxPercent > 0 ? (totalPrice * salonProfile.taxPercent) / 100 : 0;
-  const finalPrice = totalPrice + taxAmount;
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chat]);
 
-  const handleServiceToggle = (serviceId: string) => {
-    setSelectedPackage(null);
-    setSelectedServices(prev => 
-      prev.includes(serviceId) 
-        ? prev.filter(id => id !== serviceId)
-        : [...prev, serviceId]
-    );
-  };
+  // 🧠 AI Agent Logic (Context Injection)
+  const askAI = async () => {
+    if (!input.trim()) return;
+    const userMsg = input;
+    setChat(prev => [...prev, { role: 'user', text: userMsg }]);
+    setInput('');
 
-  const handlePackageSelect = (packageId: string) => {
-    setSelectedServices([]);
-    setSelectedPackage(selectedPackage === packageId ? null : packageId);
-  };
+    try {
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      
+      const systemContext = `
+        You are ${assistantName}, the luxury concierge for ${salonProfile?.name}.
+        SERVICES: ${services.map(s => `${s.name} ($${s.price})`).join(', ')}
+        PACKAGES: ${packages.map(p => p.name).join(', ')}
+        FAQs: ${faqs.map(f => `Q: ${f.question} A: ${f.answer}`).join(' ')}
+        
+        STRICT RULES:
+        1. Only answer about ${salonProfile?.name}. 
+        2. If you don't know the answer, say: "I'm not sure about that, but please leave your name and number and our team will get back to you immediately!"
+        3. If they want to book, tell them: "Click the 'Book Now' button right below this chat to see our real-time calendar."
+        4. Be glamorous, professional, and friendly.
+      `;
 
-  const handleConfirm = () => {
-    const items = getSelectedItems();
-    const staffMember = staff.find(s => s.id === selectedStaff);
-    
-    // Calculate end time
-    const [hours, mins] = (selectedTime || '09:00').split(':').map(Number);
-    const startMinutes = hours * 60 + mins;
-    const endMinutes = startMinutes + totalDuration;
-    const endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`;
-
-    addBooking({
-      salonId: salonProfile.id,
-      clientId: '',
-      clientName,
-      clientPhone,
-      staffId: selectedStaff || undefined,
-      staffName: staffMember?.name,
-      services: items.map(item => ({
-        serviceId: item.id,
-        serviceName: item.name,
-        price: item.price,
-        duration: item.duration,
-      })),
-      date: format(selectedDate, 'yyyy-MM-dd'),
-      startTime: selectedTime || '09:00',
-      endTime,
-      totalPrice,
-      taxAmount,
-      finalPrice,
-      status: 'pending',
-      notes,
-    });
-
-    setStep('success');
-  };
-
-  const canProceed = () => {
-    switch (step) {
-      case 'service':
-        return selectedServices.length > 0 || selectedPackage !== null;
-      case 'datetime':
-        return selectedTime !== null;
-      case 'details':
-        return clientName.trim() !== '' && clientPhone.trim() !== '';
-      default:
-        return true;
+      const result = await model.generateContent([systemContext, userMsg]);
+      const response = await result.response;
+      setChat(prev => [...prev, { role: 'bot', text: response.text() }]);
+    } catch (error) {
+      setChat(prev => [...prev, { role: 'bot', text: "I'm currently busy styling! Please leave your number and I'll call you back soon." }]);
     }
   };
 
-  const goNext = () => {
-    const steps: WidgetStep[] = ['language', 'service', 'datetime', 'artist', 'details', 'confirm'];
-    const currentIndex = steps.indexOf(step);
-    if (currentIndex < steps.length - 1) {
-      // Skip artist selection if not enabled
-      if (steps[currentIndex + 1] === 'artist' && !true) {
-        setStep(steps[currentIndex + 2]);
-      } else {
-        setStep(steps[currentIndex + 1]);
-      }
-    }
-  };
-
-  const goBack = () => {
-    const steps: WidgetStep[] = ['language', 'service', 'datetime', 'artist', 'details', 'confirm'];
-    const currentIndex = steps.indexOf(step);
-    if (currentIndex > 0) {
-      setStep(steps[currentIndex - 1]);
-    }
-  };
-
-  const resetWidget = () => {
-    setStep('language');
-    setSelectedServices([]);
-    setSelectedPackage(null);
-    setSelectedTime(null);
-    setSelectedStaff(null);
-    setClientName('');
-    setClientPhone('');
-    setClientEmail('');
-    setNotes('');
-    setIsOpen(false);
-  };
-
-  const getCategoryName = (categoryId: string) => {
-    const cat = categories.find(c => c.id === categoryId);
-    if (!cat) return '';
-    if (language === 'ar') return cat.nameAr;
-    if (language === 'fr') return cat.nameFr;
-    return cat.name;
-  };
-
-  const getServiceName = (service: typeof services[0]) => {
-    if (language === 'ar') return service.nameAr || service.name;
-    if (language === 'fr') return service.nameFr || service.name;
-    return service.name;
-  };
-
-  const getPackageName = (pkg: typeof packages[0]) => {
-    if (language === 'ar') return pkg.nameAr || pkg.name;
-    if (language === 'fr') return pkg.nameFr || pkg.name;
-    return pkg.name;
-  };
+  if (!salonProfile) return null;
 
   return (
-    <>
-      {/* Floating Button */}
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg transition-transform hover:scale-110"
-        style={{ backgroundColor: 'var(--widget-primary-color)' }}
-      >
-        <MessageCircle className="h-6 w-6" />
-      </button>
-
-      {/* Widget Modal */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 z-50 flex items-end justify-end p-4 sm:items-center sm:justify-end"
-          style={{ '--widget-primary-color': salonProfile.brandColor } as React.CSSProperties}
-        >
-          <div 
-            className="absolute inset-0 bg-black/30"
-            onClick={() => setIsOpen(false)}
+    <div className={cn("fixed bottom-8 right-8 z-[1000]", language === 'ar' && "rtl")}>
+      
+      {/* 💅 THE AVATAR (Girl Face + Book Now Text) */}
+      <div className="relative group cursor-pointer" onClick={() => setIsOpen(!isOpen)}>
+        {!isOpen && (
+          <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white px-3 py-1 rounded-full shadow-lg border border-gray-100 animate-bounce">
+            <span className="text-[10px] font-black text-indigo-600 uppercase whitespace-nowrap">Book Now ✨</span>
+          </div>
+        )}
+        <div className={cn(
+          "h-20 w-20 rounded-full border-4 border-white shadow-2xl overflow-hidden transition-all duration-500 hover:scale-110 ring-4",
+          isOpen ? "scale-0 opacity-0" : "scale-100 opacity-100"
+        )} style={{ ringColor: brandColor }}>
+          <img 
+            src="https://resource2.heygen.ai/photo_generation/5850472520224fb39a1f4b622168b54f/e068c584-11a6-450a-a09f-257a67067c75.jpg" 
+            alt="Assistant" 
+            className="h-full w-full object-cover"
           />
-          <div 
-            className={cn(
-              "relative w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden",
-              isRTL && "rtl"
-            )}
-            dir={isRTL ? 'rtl' : 'ltr'}
-          >
-            {/* Header */}
-            <div 
-              className="flex items-center justify-between p-4 text-white"
-              style={{ backgroundColor: 'var(--widget-primary-color)' }}
-            >
-              <div className="flex items-center gap-3">
-                {salonProfile.logo && (
-                  <img src={salonProfile.logo} alt={salonProfile.name} className="h-10 w-10 rounded-full" />
-                )}
-                {step !== 'language' && step !== 'success' && (
-                  <button onClick={goBack} className="rounded-full p-1 hover:bg-white/20">
-                    {isRTL ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
-                  </button>
-                )}
-                <div>
-                  <h3 className="font-bold">{salonProfile.name}</h3>
-                  <p className="text-sm opacity-90">{salonProfile.address}, {countries.find(c => c.code === salonProfile.countryCode)?.name}</p>
-                </div>
+        </div>
+      </div>
+
+      {/* 🏰 THE PREMIUM WINDOW */}
+      {isOpen && (
+        <div className="w-[400px] h-[650px] max-h-[85vh] bg-white rounded-[3rem] shadow-[-20px_20px_60px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col animate-in slide-in-from-bottom-10">
+          
+          {/* Header Area */}
+          <div className="relative p-8 text-white" style={{ backgroundColor: brandColor }}>
+            <button onClick={() => setIsOpen(false)} className="absolute top-6 right-6 p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors">
+              <X size={20}/>
+            </button>
+            <div className="flex gap-4 items-center">
+              <div className="h-16 w-16 rounded-3xl border-2 border-white/50 overflow-hidden shadow-lg">
+                <img src="https://resource2.heygen.ai/photo_generation/5850472520224fb39a1f4b622168b54f/e068c584-11a6-450a-a09f-257a67067c75.jpg" className="h-full w-full object-cover" />
               </div>
-              <button onClick={resetWidget} className="rounded-full p-1 hover:bg-white/20">
-                <X className="h-5 w-5" />
-              </button>
+              <div>
+                <h3 className="text-xl font-black tracking-tighter">{salonProfile.name}</h3>
+                <p className="text-xs font-bold opacity-80 flex items-center gap-1">
+                  <Sparkles size={12}/> {assistantName} - Your Luxury Guide
+                </p>
+              </div>
             </div>
-
-            {/* Content */}
-            <div className="max-h-[60vh] overflow-y-auto p-4">
-              {/* Language Selection */}
-              {step === 'language' && (
-                <div className="space-y-4">
-                  <h4 className="text-center font-medium text-gray-900">{t.selectLanguage}</h4>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { code: 'en' as Language, name: 'English', flag: '🇬🇧' },
-                      { code: 'ar' as Language, name: 'العربية', flag: '🇸🇦' },
-                      { code: 'fr' as Language, name: 'Français', flag: '🇫🇷' },
-                    ].map((lang) => (
-                      <button
-                        key={lang.code}
-                        onClick={() => { setLanguage(lang.code); setStep('service'); }}
-                        className={cn(
-                          "flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-colors",
-                          language === lang.code ? "border-2" : "border-gray-200 hover:border-gray-300"
-                        )}
-                        style={language === lang.code ? { borderColor: 'var(--widget-primary-color)' } : {}}
-                      >
-                        <span className="text-3xl">{lang.flag}</span>
-                        <span className="text-sm font-medium">{lang.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Service Selection */}
-              {step === 'service' && (
-                <div className="space-y-4">
-                  <h4 className="font-medium text-gray-900">{t.selectService}</h4>
-                  
-                  {/* Toggle */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setViewMode('services')}
-                      className={cn(
-                        "flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition-colors",
-                        viewMode === 'services' ? "text-white" : "bg-gray-100 text-gray-700"
-                      )}
-                      style={viewMode === 'services' ? { backgroundColor: 'var(--widget-primary-color)' } : {}}
-                    >
-                      <Scissors className="h-4 w-4" />
-                      {t.services}
-                    </button>
-                    <button
-                      onClick={() => setViewMode('packages')}
-                      className={cn(
-                        "flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition-colors",
-                        viewMode === 'packages' ? "text-white" : "bg-gray-100 text-gray-700"
-                      )}
-                      style={viewMode === 'packages' ? { backgroundColor: 'var(--widget-primary-color)' } : {}}
-                    >
-                      <Package className="h-4 w-4" />
-                      {t.packages}
-                    </button>
-                  </div>
-
-                  {viewMode === 'services' ? (
-                    <div className="space-y-4">
-                      {categories.map(category => {
-                        const categoryServices = activeServices.filter(s => s.categoryId === category.id);
-                        if (categoryServices.length === 0) return null;
-                        
-                        return (
-                          <div key={category.id}>
-                            <h5 className="text-xs font-medium text-gray-500 uppercase mb-2">
-                              {getCategoryName(category.id)}
-                            </h5>
-                            <div className="space-y-2">
-                              {categoryServices.map(service => (
-                                <button
-                                  key={service.id}
-                                  onClick={() => handleServiceToggle(service.id)}
-                                  className={cn(
-                                    "w-full flex items-center justify-between rounded-lg border-2 p-3 transition-colors text-left",
-                                    selectedServices.includes(service.id) ? "" : "border-gray-200 hover:border-gray-300"
-                                  )}
-                                  style={selectedServices.includes(service.id) ? { borderColor: 'var(--widget-primary-color)' } : {}}
-                                >
-                                  <div>
-                                    <p className="font-medium text-gray-900">{getServiceName(service)}</p>
-                                    <p className="text-sm text-gray-500">{service.duration} {t.minutes}</p>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-semibold">{service.currency} {service.price}</span>
-                                    {selectedServices.includes(service.id) && (
-                                      <Check className="h-5 w-5" style={{ color: 'var(--widget-primary-color)' }} />
-                                    )}
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {activePackages.map(pkg => (
-                        <button
-                          key={pkg.id}
-                          onClick={() => handlePackageSelect(pkg.id)}
-                          className={cn(
-                            "w-full rounded-lg border-2 p-3 transition-colors text-left",
-                            selectedPackage === pkg.id ? "" : "border-gray-200 hover:border-gray-300"
-                          )}
-                          style={selectedPackage === pkg.id ? { borderColor: 'var(--widget-primary-color)' } : {}}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-medium text-gray-900">{getPackageName(pkg)}</p>
-                              <p className="text-sm text-gray-500">{pkg.services.length} services included</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm text-gray-400 line-through">{pkg.currency} {pkg.originalPrice}</p>
-                              <p className="font-semibold" style={{ color: 'var(--widget-primary-color)' }}>
-                                {pkg.currency} {pkg.discountedPrice}
-                              </p>
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+            
+            {/* Quick Actions Bar */}
+            <div className="flex gap-2 mt-8">
+              {['chat', 'faqs'].map((tab) => (
+                <button 
+                  key={tab}
+                  onClick={() => setActiveView(tab as any)}
+                  className={cn(
+                    "px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all",
+                    activeView === tab ? "bg-white text-gray-900" : "bg-white/20 text-white"
                   )}
-                </div>
-              )}
-
-              {/* Date & Time Selection */}
-              {step === 'datetime' && (
-                <div className="space-y-4">
-                  <h4 className="font-medium text-gray-900">{t.selectDateTime}</h4>
-                  
-                  {/* Week Navigation */}
-                  <div className="flex items-center justify-between">
-                    <button
-                      onClick={() => setCurrentWeek(addDays(currentWeek, -7))}
-                      className="rounded-full p-1 hover:bg-gray-100"
-                    >
-                      <ChevronLeft className="h-5 w-5" />
-                    </button>
-                    <span className="text-sm font-medium text-gray-700">
-                      {format(weekStart, 'MMM d')} - {format(addDays(weekStart, 6), 'MMM d, yyyy')}
-                    </span>
-                    <button
-                      onClick={() => setCurrentWeek(addDays(currentWeek, 7))}
-                      className="rounded-full p-1 hover:bg-gray-100"
-                    >
-                      <ChevronRight className="h-5 w-5" />
-                    </button>
-                  </div>
-
-                  {/* Days */}
-                  <div className="grid grid-cols-7 gap-1">
-                    {weekDays.map((day) => (
-                      <button
-                        key={day.toISOString()}
-                        onClick={() => setSelectedDate(day)}
-                        disabled={day < new Date()}
-                        className={cn(
-                          "flex flex-col items-center rounded-lg p-2 transition-colors",
-                          day < new Date() && "opacity-50 cursor-not-allowed",
-                          isSameDay(day, selectedDate) ? "text-white" : "hover:bg-gray-100"
-                        )}
-                        style={isSameDay(day, selectedDate) ? { backgroundColor: 'var(--widget-primary-color)' } : {}}
-                      >
-                        <span className="text-xs">{format(day, 'EEE')}</span>
-                        <span className="text-lg font-bold">{format(day, 'd')}</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Time Slots */}
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">Available times for {format(selectedDate, 'MMM d')}</p>
-                    <div className="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto">
-                      {timeSlots.map((time) => (
-                        <button
-                          key={time}
-                          onClick={() => setSelectedTime(time)}
-                          className={cn(
-                            "rounded-lg py-2 text-sm font-medium transition-colors",
-                            selectedTime === time ? "text-white" : "bg-gray-100 hover:bg-gray-200"
-                          )}
-                          style={selectedTime === time ? { backgroundColor: 'var(--widget-primary-color)' } : {}}
-                        >
-                          {time}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Artist Selection */}
-              {step === 'artist' && (
-                <div className="space-y-4">
-                  <h4 className="font-medium text-gray-900">{t.selectArtist}</h4>
-                  
-                  <button
-                    onClick={() => setSelectedStaff(null)}
-                    className={cn(
-                      "w-full flex items-center gap-3 rounded-lg border-2 p-3 transition-colors",
-                      selectedStaff === null ? "" : "border-gray-200 hover:border-gray-300"
-                    )}
-                    style={selectedStaff === null ? { borderColor: 'var(--widget-primary-color)' } : {}}
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
-                      <User className="h-5 w-5 text-gray-400" />
-                    </div>
-                    <span className="font-medium">{t.anyAvailable}</span>
-                  </button>
-
-                  {activeStaff.map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => setSelectedStaff(s.id)}
-                      className={cn(
-                        "w-full flex items-center gap-3 rounded-lg border-2 p-3 transition-colors",
-                        selectedStaff === s.id ? "" : "border-gray-200 hover:border-gray-300"
-                      )}
-                      style={selectedStaff === s.id ? { borderColor: 'var(--widget-primary-color)' } : {}}
-                    >
-                      <div 
-                        className="flex h-10 w-10 items-center justify-center rounded-full text-white font-bold"
-                        style={{ backgroundColor: 'var(--widget-primary-color)' }}
-                      >
-                        {s.name.charAt(0)}
-                      </div>
-                      <span className="font-medium">{s.name}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Client Details */}
-              {step === 'details' && (
-                <div className="space-y-4">
-                  <h4 className="font-medium text-gray-900">{t.yourDetails}</h4>
-                  
-                  <div>
-                    <label className="mb-1 block text-sm text-gray-600">
-                      <User className="inline h-4 w-4 mr-1" />
-                      {t.name} *
-                    </label>
-                    <input
-                      type="text"
-                      value={clientName}
-                      onChange={(e) => setClientName(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2"
-                      style={{ '--tw-ring-color': 'var(--widget-primary-color)' } as React.CSSProperties}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-sm text-gray-600">
-                      <Phone className="inline h-4 w-4 mr-1" />
-                      {t.phone} *
-                    </label>
-                    <input
-                      type="tel"
-                      value={clientPhone}
-                      onChange={(e) => setClientPhone(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2"
-                      style={{ '--tw-ring-color': 'var(--widget-primary-color)' } as React.CSSProperties}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-sm text-gray-600">
-                      <Mail className="inline h-4 w-4 mr-1" />
-                      {t.email}
-                    </label>
-                    <input
-                      type="email"
-                      value={clientEmail}
-                      onChange={(e) => setClientEmail(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2"
-                      style={{ '--tw-ring-color': 'var(--widget-primary-color)' } as React.CSSProperties}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-sm text-gray-600">{t.notes}</label>
-                    <textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      rows={2}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2"
-                      style={{ '--tw-ring-color': 'var(--widget-primary-color)' } as React.CSSProperties}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Confirmation */}
-              {step === 'confirm' && (
-                <div className="space-y-4">
-                  <h4 className="font-medium text-gray-900">{t.confirmBooking}</h4>
-                  
-                  <div className="rounded-lg bg-gray-50 p-4 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <Calendar className="h-5 w-5 text-gray-400" />
-                      <span>{format(selectedDate, 'EEEE, MMMM d, yyyy')}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Clock className="h-5 w-5 text-gray-400" />
-                      <span>{selectedTime} ({totalDuration} {t.minutes})</span>
-                    </div>
-                    {selectedStaff && (
-                      <div className="flex items-center gap-3">
-                        <User className="h-5 w-5 text-gray-400" />
-                        <span>{activeStaff.find(s => s.id === selectedStaff)?.name}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    {getSelectedItems().map(item => (
-                      <div key={item.id} className="flex justify-between text-sm">
-                        <span>{item.name}</span>
-                        <span>{salonProfile.currency} {item.price}</span>
-                      </div>
-                    ))}
-                    {salonProfile.taxPercent > 0 && (
-                      <div className="flex justify-between text-sm text-gray-500">
-                        <span>Tax ({salonProfile.taxPercent}%)</span>
-                        <span>{salonProfile.currency} {taxAmount.toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between font-bold pt-2 border-t">
-                      <span>Total</span>
-                      <span style={{ color: 'var(--widget-primary-color)' }}>
-                        {salonProfile.currency} {finalPrice.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Success */}
-              {step === 'success' && (
-                <div className="text-center py-8">
-                  <div 
-                    className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full"
-                    style={{ backgroundColor: `var(--widget-primary-color)` }}
-                  >
-                    <Check className="h-8 w-8" style={{ color: 'white' }} />
-                  </div>
-                  <h4 className="text-xl font-bold text-gray-900">{t.bookingConfirmed}</h4>
-                  <p className="mt-2 text-gray-500">{t.confirmationSent}</p>
-                </div>
-              )}
+                >
+                  {tab}
+                </button>
+              ))}
             </div>
+          </div>
 
-            {/* Footer */}
-            {step !== 'language' && step !== 'success' && (
-              <div className="border-t p-4">
-                {step === 'confirm' ? (
-                  <button
-                    onClick={handleConfirm}
-                    className="w-full rounded-lg py-3 text-center font-medium text-white"
-                    style={{ backgroundColor: 'var(--widget-primary-color)' }}
-                  >
-                    {t.confirm}
-                  </button>
-                ) : (
-                  <button
-                    onClick={goNext}
-                    disabled={!canProceed()}
-                    className="w-full rounded-lg py-3 text-center font-medium text-white disabled:opacity-50"
-                    style={{ backgroundColor: 'var(--widget-primary-color)' }}
-                  >
-                    {t.next}
-                  </button>
-                )}
+          {/* Body Content */}
+          <div className="flex-1 overflow-y-auto bg-gray-50/50 p-6">
+            {activeView === 'chat' && (
+              <div className="space-y-4">
+                {chat.map((msg, i) => (
+                  <div key={i} className={cn("flex flex-col", msg.role === 'user' ? "items-end" : "items-start")}>
+                    <div className={cn(
+                      "max-w-[85%] p-4 rounded-[1.5rem] text-sm font-medium shadow-sm",
+                      msg.role === 'user' ? "bg-indigo-600 text-white" : "bg-white text-gray-800"
+                    )}>
+                      {msg.text}
+                    </div>
+                  </div>
+                ))}
+                <div ref={chatEndRef} />
               </div>
             )}
 
-            {step === 'success' && (
-              <div className="border-t p-4">
-                <button
-                  onClick={resetWidget}
-                  className="w-full rounded-lg py-3 text-center font-medium text-white"
-                  style={{ backgroundColor: 'var(--widget-primary-color)' }}
-                >
-                  {t.close}
-                </button>
+            {activeView === 'faqs' && (
+              <div className="space-y-3">
+                {faqs.map(faq => (
+                  <div key={faq.id} className="p-4 bg-white rounded-2xl border-2 border-gray-50 shadow-sm">
+                    <p className="font-black text-gray-900 text-xs uppercase mb-2">Q: {faq.question}</p>
+                    <p className="text-sm text-gray-500 font-medium">A: {faq.answer}</p>
+                  </div>
+                ))}
               </div>
             )}
           </div>
+
+          {/* Bottom Controls */}
+          <div className="p-6 bg-white border-t border-gray-100">
+            {activeView === 'chat' ? (
+              <div className="flex gap-2">
+                <input 
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && askAI()}
+                  placeholder="Ask me anything..."
+                  className="flex-1 bg-gray-100 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:ring-2"
+                  style={{ '--tw-ring-color': brandColor } as any}
+                />
+                <button onClick={askAI} className="p-3 rounded-2xl text-white shadow-xl" style={{ backgroundColor: brandColor }}>
+                  <Send size={20} />
+                </button>
+              </div>
+            ) : null}
+            
+            <button 
+              onClick={() => setActiveView('booking')}
+              className="w-full mt-4 py-4 bg-gray-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-2xl transition-transform hover:scale-[1.02]"
+            >
+              <Calendar size={16}/> Book My Transformation
+            </button>
+          </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

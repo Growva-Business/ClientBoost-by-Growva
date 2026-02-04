@@ -3,13 +3,19 @@ import {
   Users, Search, Filter, Download, Mail, Phone, Star, 
   Calendar, DollarSign, Save, RotateCcw, Shield, ShieldOff 
 } from 'lucide-react';
+import { useStore } from '@/store/useStore'; // ✅ Added for language/RTL support
 import { useMarketingStore } from '@/store/useMarketingStore';
 import { useBookingStore } from '@/store/useBookingStore';
 import { cn } from '@/shared/utils/cn';
 import { format } from 'date-fns';
 import { ClientType } from '@/types';
+import { useFetchDashboardData } from '@/hooks/useFetchDashboardData';   
 
-export function ClientsPage() {
+export default function ClientsPage() {
+  // ✅ Master hook handles all data orchestration for marketing/clients
+  useFetchDashboardData('marketing'); 
+
+  const { language } = useStore(); // ✅ Support for RTL/LTR layouts
   const { 
     clients, savedFilters, currentFilter, setCurrentFilter, 
     resetFilter, saveFilter, getFilteredClients, updateClientOptIn 
@@ -20,6 +26,10 @@ export function ClientsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [saveFilterModal, setSaveFilterModal] = useState(false);
   const [filterName, setFilterName] = useState('');
+
+  const isRTL = language === 'ar';
+
+  // ❌ REMOVED: Any manual useEffect hooks for fetching data
 
   const filteredClients = getFilteredClients().filter(client =>
     client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -40,35 +50,29 @@ export function ClientsPage() {
       date_range: filter.date_range,
       gender: filter.gender,
       age_group: filter.age_group,
-      service_id: filter.service_id, // 🧸 Fixed to service_id
-      staff_id: filter.staff_id,     // 🧸 Fixed to staff_id
-      min_spend: filter.min_spend,   // 🧸 Fixed to min_spend
-      max_spend: filter.max_spend,   // 🧸 Fixed to max_spend
+      service_id: filter.service_id, 
+      staff_id: filter.staff_id,     
+      min_spend: filter.min_spend,   
+      max_spend: filter.max_spend,   
       client_type: filter.client_type,
       safe_only: filter.safe_only,
     });
   };
 
- const handleExportCSV = () => {
-    // 1. Define the headers for your spreadsheet
+  const handleExportCSV = () => {
     const headers = ['Name', 'Email', 'Phone', 'Type', 'Total Spent', 'Visits', 'Last Visit', 'Opt-In'];
-    
-    // 2. Map through filteredClients using the correct snake_case properties
     const data = filteredClients.map(c => [
       c.name,
       c.email,
       c.phone,
-      c.client_type,        // 🧸 Updated: client_type
-      c.total_spent || 0,   // 🧸 Updated: total_spent
-      c.total_visits || 0,  // 🧸 Updated: total_visits
-      c.last_visit ? format(new Date(c.last_visit), 'yyyy-MM-dd') : 'Never', // 🧸 Formatted date
-      c.opt_in ? 'Yes' : 'No' // 🧸 Updated: opt_in
+      c.client_type,
+      c.total_spent || 0,
+      c.total_visits || 0,
+      c.last_visit ? format(new Date(c.last_visit), 'yyyy-MM-dd') : 'Never',
+      c.opt_in ? 'Yes' : 'No'
     ]);
     
-    // 3. Convert array to CSV string
     const csvContent = [headers, ...data].map(row => row.join(',')).join('\n');
-    
-    // 4. Create and trigger the download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -77,17 +81,17 @@ export function ClientsPage() {
     link.setAttribute('download', `salon-clients-${format(new Date(), 'yyyy-MM-dd')}.csv`);
     document.body.appendChild(link);
     link.click();
-    
-    // 5. Cleanup
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
+
   const getClientTypeColor = (type: ClientType) => {
     switch (type) {
       case 'vip': return 'bg-purple-100 text-purple-700';
       case 'premium': return 'bg-blue-100 text-blue-700';
       case 'regular': return 'bg-green-100 text-green-700';
       case 'new': return 'bg-gray-100 text-gray-700';
+      default: return 'bg-gray-100 text-gray-700';
     }
   };
 
@@ -122,13 +126,21 @@ export function ClientsPage() {
         </div>
       )}
 
-      {/* Main Controls */}
+      {/* Search Bar - RTL Supportive */}
       <div className="relative group">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 group-focus-within:text-rose-500 transition-colors" />
+        <Search className={cn(
+          "absolute top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 group-focus-within:text-rose-500 transition-colors",
+          isRTL ? "right-3" : "left-3"
+        )} />
         <input 
-          type="text" placeholder="Search name, email, or phone..." value={searchQuery} 
+          type="text" 
+          placeholder="Search name, email, or phone..." 
+          value={searchQuery} 
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full rounded-xl border-gray-200 py-3 pl-10 pr-4 text-sm focus:border-rose-500 focus:ring-rose-200 transition-all outline-none border shadow-sm" 
+          className={cn(
+            "w-full rounded-xl border-gray-200 py-3 text-sm focus:border-rose-500 focus:ring-rose-200 transition-all outline-none border shadow-sm",
+            isRTL ? "pr-10 pl-4 text-right" : "pl-10 pr-4"
+          )} 
         />
       </div>
 
@@ -160,7 +172,6 @@ export function ClientsPage() {
                 </button>
               </div>
             </div>
-            {/* Using services/staff to clear warnings */}
             <div>
               <label className="text-xs font-bold text-gray-400 uppercase mb-2 block text-center">Preferences</label>
               <p className="text-[10px] text-gray-400 text-center">Filter across {services.length} services & {staff.length} staff</p>
@@ -178,91 +189,92 @@ export function ClientsPage() {
         </div>
       )}
 
- 
-
       {/* Table Section */}
-   <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
-        <table className="w-full text-left border-collapse">
+      <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <table className="w-full text-left border-collapse" dir={isRTL ? 'rtl' : 'ltr'}>
           <thead className="bg-gray-50/50 text-[10px] uppercase text-gray-400 font-black tracking-widest border-b border-gray-50">
             <tr>
-              <th className="px-6 py-4">Client Information</th>
-              <th className="px-6 py-4">Status</th>
+              <th className={cn("px-6 py-4", isRTL ? "text-right" : "text-left")}>Client Information</th>
+              <th className={cn("px-6 py-4", isRTL ? "text-right" : "text-left")}>Status</th>
               <th className="px-6 py-4 text-center">Activity</th>
-              <th className="px-6 py-4 text-right">Revenue ({salonProfile?.currency || '$'})</th>
+              <th className={cn("px-6 py-4", isRTL ? "text-left" : "text-right")}>Revenue ({salonProfile?.currency || '$'})</th>
+              <th className="px-6 py-4 text-center">Safety</th>
             </tr>
           </thead>
-         <tbody className="divide-y divide-gray-50 text-sm">
-  {filteredClients.map((client) => (
-    <tr key={client.id} className="hover:bg-gray-50/50 transition-colors group">
-      {/* 1. Client Info Column (Uses Mail and Phone) */}
-      <td className="px-6 py-5">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center font-black text-lg border border-rose-100">
-            {client.name[0]}
-          </div>
-          <div>
-            <div className="font-bold text-gray-900 group-hover:text-rose-600 transition-colors">
-              {client.name}
-            </div>
-            <div className="text-xs text-gray-400 flex flex-col gap-0.5">
-              <span className="flex items-center gap-1">
-                <Mail size={10} /> {client.email}
-              </span>
-              <span className="flex items-center gap-1">
-                <Phone size={10} /> {client.phone}
-              </span>
-            </div>
-          </div>
-        </div>
-      </td>
+          <tbody className="divide-y divide-gray-50 text-sm">
+            {filteredClients.map((client) => (
+              <tr key={client.id} className="hover:bg-gray-50/50 transition-colors group">
+                <td className="px-6 py-5">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center font-black text-lg border border-rose-100">
+                      {client.name[0]}
+                    </div>
+                    <div>
+                      <div className="font-bold text-gray-900 group-hover:text-rose-600 transition-colors">
+                        {client.name}
+                      </div>
+                      <div className="text-xs text-gray-400 flex flex-col gap-0.5">
+                        <span className="flex items-center gap-1">
+                          <Mail size={10} /> {client.email}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Phone size={10} /> {client.phone}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </td>
 
-      {/* 2. Status Column (Uses getClientTypeColor and Star) */}
-      <td className="px-6 py-5">
-        <span className={cn(
-          "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter flex items-center gap-1 w-fit", 
-          getClientTypeColor(client.client_type)
-        )}>
-          {client.client_type} 
-          {client.client_type === 'vip' && <Star size={10} className="fill-current" />}
-        </span>
-      </td>
+                <td className="px-6 py-5">
+                  <span className={cn(
+                    "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter flex items-center gap-1 w-fit", 
+                    getClientTypeColor(client.client_type)
+                  )}>
+                    {client.client_type} 
+                    {client.client_type === 'vip' && <Star size={10} className="fill-current" />}
+                  </span>
+                </td>
 
-      {/* 3. Activity Column (Uses Calendar) */}
-      <td className="px-6 py-5 text-center">
-        <div className="text-xs font-bold text-gray-900 flex flex-col gap-1 items-center">
-          <span className="flex items-center gap-1 text-gray-400">
-            <Calendar size={12} /> Last Visit
-          </span>
-          {client.last_visit ? format(new Date(client.last_visit), 'MMM d, yyyy') : 'No History'}
-        </div>
-      </td>
+                <td className="px-6 py-5 text-center">
+                  <div className="text-xs font-bold text-gray-900 flex flex-col gap-1 items-center">
+                    <span className="flex items-center gap-1 text-gray-400">
+                      <Calendar size={12} /> Last Visit
+                    </span>
+                    {client.last_visit ? format(new Date(client.last_visit), 'MMM d, yyyy') : 'No History'}
+                  </div>
+                </td>
 
-      {/* 4. Revenue Column (Uses DollarSign) */}
-      <td className="px-6 py-5 text-right font-black text-gray-900">
-        <DollarSign size={14} className="inline mr-0.5 text-gray-300" />
-        {client.total_spent?.toLocaleString()}
-      </td>
+                <td className={cn("px-6 py-5 font-black text-gray-900", isRTL ? "text-left" : "text-right")}>
+                  <DollarSign size={14} className="inline mr-0.5 text-gray-300" />
+                  {client.total_spent?.toLocaleString()}
+                </td>
 
-      {/* 5. Opt-In Column (Uses Shield/ShieldOff) */}
-      <td className="px-6 py-5 text-center">
-        <button 
-          onClick={() => updateClientOptIn(client.id, !client.opt_in)}
-          className={cn(
-            "p-2 rounded-lg transition-all hover:scale-110",
-            client.opt_in ? "bg-green-50 text-green-600" : "bg-gray-50 text-gray-300"
-          )}
-        >
-          {client.opt_in ? <Shield size={18} /> : <ShieldOff size={18} />}
-        </button>
-      </td>
-    </tr>
-  ))}
-</tbody>
+                <td className="px-6 py-5 text-center">
+                  <button 
+                    onClick={() => updateClientOptIn(client.id, !client.opt_in)}
+                    className={cn(
+                      "p-2 rounded-lg transition-all hover:scale-110",
+                      client.opt_in ? "bg-green-50 text-green-600" : "bg-gray-50 text-gray-300"
+                    )}
+                  >
+                    {client.opt_in ? <Shield size={18} /> : <ShieldOff size={18} />}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
         </table>
       </div>
 
+      {/* Empty State */}
+      {filteredClients.length === 0 && (
+        <div className="py-20 text-center">
+          <Users className="mx-auto h-12 w-12 text-gray-200 mb-4" />
+          <p className="text-gray-500 font-medium">No clients found matching your search.</p>
+        </div>
+      )}
 
-      {/* Modal Overlay */}
+      {/* Save Filter Modal */}
       {saveFilterModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm p-4">
           <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-2xl animate-in zoom-in-95 duration-200">
@@ -271,7 +283,10 @@ export function ClientsPage() {
             <input
               type="text" value={filterName} onChange={(e) => setFilterName(e.target.value)}
               placeholder="e.g., VIP Summer Segment"
-              className="mt-6 w-full rounded-xl border-gray-100 bg-gray-50 px-4 py-3 text-sm focus:ring-2 ring-rose-100 outline-none border transition-all"
+              className={cn(
+                "mt-6 w-full rounded-xl border-gray-100 bg-gray-50 px-4 py-3 text-sm focus:ring-2 ring-rose-100 outline-none border transition-all",
+                isRTL && "text-right"
+              )}
             />
             <div className="mt-8 flex gap-3">
               <button onClick={() => setSaveFilterModal(false)} className="flex-1 rounded-xl py-3 text-sm font-bold text-gray-400 hover:bg-gray-50 transition-colors">Cancel</button>

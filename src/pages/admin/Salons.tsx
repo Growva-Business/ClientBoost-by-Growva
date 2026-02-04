@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react'; // ✅ Added useRef
 import { 
   Plus, Search, Globe, Phone, X 
 } from 'lucide-react'; 
@@ -9,7 +9,7 @@ import { cn } from '@/shared/utils/cn';
 import { 
   Language, PackageType, BillingStatus, WhatsAppProvider 
 } from '@/types'; 
-
+import { useFetchDashboardData } from '@/hooks/useFetchDashboardData';                                                                             
 interface SalonFormData {
   name: string;
   email: string;
@@ -36,7 +36,9 @@ const initialFormData: SalonFormData = {
   whatsapp_provider: 'manual'
 };
 
-export function Salons() {
+export default function Salons() {
+    useFetchDashboardData('admin'); // ✅ Add this
+
   const { 
     language, 
     salons, 
@@ -53,10 +55,18 @@ export function Salons() {
   const [packageFilter, setPackageFilter] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState<SalonFormData>(initialFormData);
+  
+  // ✅ ADD SAFETY LOCK
+  const hasFetched = useRef(false);
 
   useEffect(() => {
-    fetchSalons();
-  }, [fetchSalons]);
+    // ✅ Only fetch once when component mounts or when salons array is empty
+    if (!hasFetched.current && !loading && (!salons || salons.length === 0)) {
+      console.log("🎯 Salons component: Fetching salons...");
+      hasFetched.current = true;
+      fetchSalons();
+    }
+  }, [fetchSalons, loading, salons]); // ✅ Added salons to dependencies
 
   // 🔍 Logic to filter the salons based on user input
   const filteredSalons = salons.filter((salon) => {
@@ -85,6 +95,8 @@ export function Salons() {
       await addSalon(formData);
       setIsModalOpen(false);
       setFormData(initialFormData);
+      // ✅ Reset fetch flag so we can fetch again if needed
+      hasFetched.current = false;
     } catch (error) {
       console.error("Failed to create salon:", error);
     }

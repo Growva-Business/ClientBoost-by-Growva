@@ -1,225 +1,33 @@
-import { create } from 'zustand';
-import { useEffect } from 'react';
-import { supabase } from '@/shared/lib/supabase';
+// src/pages/admin/Billing.tsx
+import { useStore } from '@/store/useStore';
+import { useFetchDashboardData } from '@/hooks/useFetchDashboardData';
 
-import { 
-  Language, 
-  Salon, 
-  Invoice, 
-  User, 
-  BillingStatus,
-  PackageType
-} from '@/types';
-
-/**
- * 👑 THE COMPLETE SUPER ADMIN BRAIN
- * This version has EVERY action needed for Salons and Billing.
- */
-
-interface StoreState {
-  // 🎨 UI and Data Storage
-  language: Language;
-  sidebarOpen: boolean;
-  loading: boolean;
-  currentUser: User | null;
-  salons: Salon[];
-  invoices: Invoice[];
+export default function Billing() {
+  useFetchDashboardData('admin'); // ✅ Master hook handles fetching
   
-  // ⚙️ UI Actions
-  setLanguage: (lang: Language) => void;
-  setSidebarOpen: (open: boolean) => void;
+  const { 
+    invoices, 
+    salons, 
+    loading 
+  } = useStore(); // ❌ Remove fetchSalons and fetchInvoices
   
-  // 🏠 Salon Actions (Phase 2)
-  fetchSalons: () => Promise<void>;
-  addSalon: (salonData: any) => Promise<void>;
-  updateSalonStatus: (id: string, status: BillingStatus) => Promise<void>;
-  
-  // 💰 Billing Actions (Phase 2)
-  fetchInvoices: () => Promise<void>;
-  markInvoiceAsPaid: (id: string) => Promise<void>;
-  generateInvoice: (salonId: string) => Promise<void>;
-  
-  // 📝 Logging (Global)
-  logAction: (action: string, details: string, category: string) => Promise<void>;
-}
+  // ❌ REMOVE THIS ENTIRE SECTION:
+  // 🛡️ SAFETY LOCK: Prevent multiple fetches
+  // const hasFetched = useRef(false);
+  //
+  // useEffect(() => {
+  //   // Only fetch once when component mounts
+  //   if (!hasFetched.current) {
+  //     console.log("🎯 Billing: Initial fetch");
+  //     hasFetched.current = true;
+  //     fetchSalons();
+  //     fetchInvoices();
+  //   }
+  // }, [fetchSalons, fetchInvoices]); // ✅ Add dependencies
 
-export const useStore = create<StoreState>((set, get) => ({
-  // --- INITIAL STATE ---
-  language: 'en',
-  sidebarOpen: true,
-  loading: false,
-  currentUser: null,
-  salons: [],
-  invoices: [],
-
-  // --- UI ACTIONS ---
- 
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
-
-  // --- SALON ACTIONS ---
-  fetchSalons: async () => {
-    set({ loading: true });
-    const { data, error } = await supabase
-      .from('salons')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error("Error fetching salons:", error.message);
-    } else {
-      set({ salons: data || [] });
-    }
-    set({ loading: false });
-  },
-
-  // Updated addSalon for 50/50/50/50 strategy
-  addSalon: async (salonData) => {
-    set({ loading: true });
-    
-    // 1. Create the Salon
-    const { data: newSalon, error: salonError } = await supabase
-      .from('salons')
-      .insert([{
-        name: salonData.name,
-        email: salonData.email,
-        phone: salonData.phone,
-        country_code: salonData.country_code,
-        currency: salonData.currency,
-        timezone: salonData.timezone || 'UTC',
-        package: salonData.package || 'pro',
-        status: 'active'
-      }])
-      .select()
-      .single();
-
-    if (salonError) {
-      console.error("Failed to create salon:", salonError.message);
-      set({ loading: false });
-      return;
-    }
-
-    // 2. Initialize the "50/50/50/50" Messaging Engine
-    const { error: limitError } = await supabase
-      .from('daily_message_limits')
-      .insert([{
-        salon_id: newSalon.id,
-        date: new Date().toISOString().split('T')[0],
-        used_confirmation: 0,
-        used_reminder: 0,
-        used_promotion: 0,
-        used_custom: 0 // <--- ADDED THE 4th 50-unit CATEGORY
-      }]);
-
-    if (limitError) console.error("Limit Setup Error:", limitError.message);
-
-    // 3. Refresh the UI
-    await get().fetchSalons();
-    set({ loading: false });
-  },
-setLanguage: (lang) => {
-  set({ language: lang });
-  // You must also tell the app to refresh its translation dictionary
-  localStorage.setItem('growva_lang', lang);
-  
-},
-  updateSalonStatus: async (id, status) => {
-    const { error } = await supabase
-      .from('salons')
-      .update({ status })
-      .eq('id', id);
-
-    if (!error) {
-      set((state) => ({
-        salons: state.salons.map(s => s.id === id ? { ...s, status } : s)
-      }));
-      await get().logAction('status_change', `Salon ${id} set to ${status}`, 'billing');
-    }
-  },
-
-  // --- BILLING ACTIONS ---
-  fetchInvoices: async () => {
-    set({ loading: true });
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    if (error) {
-      console.error("Error fetching invoices:", error.message);
-    } else {
-      set({ invoices: data || [] });
-    }
-    set({ loading: false });
-  },
-
-  markInvoiceAsPaid: async (id) => {
-    const { error } = await supabase
-      .from('invoices')
-      .update({ 
-        status: 'paid', 
-        paid_at: new Date().toISOString() 
-      })
-      .eq('id', id);
-    
-    if (error) {
-      console.error("Payment update failed:", error.message);
-    } else {
-      await get().fetchInvoices();
-      await get().logAction('payment_received', `Invoice ${id} marked as paid`, 'billing');
-    }
-  },
-
-  generateInvoice: async (salonId) => {
-    const salon = get().salons.find(s => s.id === salonId);
-    if (!salon) return;
-
-    // Prices matching our business rules
-    const packagePrices: Record<PackageType, number> = {
-      basic: 99,
-      advanced: 199,
-      pro: 299
-    };
-
-    const { error } = await supabase
-      .from('invoices')
-      .insert([{
-        salon_id: salonId,
-        invoice_number: `INV-${Date.now()}`,
-        amount: packagePrices[salon.package as PackageType] || 0,
-        currency: salon.currency,
-        status: 'pending',
-        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-      }]);
-
-    if (error) {
-      console.error("Invoice generation failed:", error.message);
-    } else {
-      await get().fetchInvoices();
-      await get().logAction('invoice_generated', `New invoice for ${salon.name}`, 'billing');
-    }
-  },
-
-  // --- LOGGING ---
-  logAction: async (action, details, category) => {
-    await supabase.from('audit_logs').insert([{
-      action,
-      details,
-      category
-    }]);
+  if (loading && (!salons || salons.length === 0)) {
+    return <p className="p-6">Loading Billing Data...</p>;
   }
-}));
-
-// Updated Billing component with proper TypeScript
-export function Billing() {
-  const { invoices, salons, loading, fetchSalons, fetchInvoices } = useStore();
-
-  // Fetch salons and invoices when the page opens
-  useEffect(() => {
-    fetchSalons();
-    fetchInvoices();
-  }, []);
-
-  if (loading) return <p className="p-6">Loading Billing Data...</p>;
 
   return (
     <div className="space-y-8 p-6">

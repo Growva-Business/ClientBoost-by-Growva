@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react'; // ✅ Added useRef
 import { 
    Download, Search, CheckCircle, Clock, AlertCircle, Eye, X, Printer
 } from 'lucide-react';
@@ -7,18 +7,35 @@ import { getTranslation } from '@/localization/translations';
 import { cn } from '@/shared/utils/cn';
 import { format } from 'date-fns';
 import { Invoice } from '@/types';
+import { useFetchDashboardData } from '@/hooks/useFetchDashboardData';                                                                             
 
-export function Invoices() {
+export default function Invoices() {
+    useFetchDashboardData('admin'); // ✅ Add this
+
   const { language, invoices, fetchInvoices, markInvoiceAsPaid } = useStore();
   const t = (key: string) => getTranslation(language, key);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null);
+  
+  // ✅ Added safety lock to prevent multiple fetches
+  const hasFetched = useRef(false);
 
-  // 🚀 Get fresh invoices when we open the page
+  // 🚀 Get fresh invoices when we open the page WITH SAFETY LOCK
   useEffect(() => {
-    fetchInvoices();
+    // ✅ Only fetch if we haven't fetched already in this session
+    if (!hasFetched.current) {
+      console.log("📄 Invoices: Fetching invoices...");
+      fetchInvoices();
+      hasFetched.current = true;
+    }
+    
+    // Optional: Add a cleanup function to reset on unmount
+    return () => {
+      // If you want to refetch when component mounts again, keep this commented
+      // hasFetched.current = false;
+    };
   }, [fetchInvoices]);
 
   const filteredInvoices = invoices.filter((invoice) => {
